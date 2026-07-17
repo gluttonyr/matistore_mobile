@@ -1,0 +1,15 @@
+export const Colors = {
+  primaryGreen: '#7DFF2A',
+  secondaryGreen: '#52D726',
+  darkBg: '#050505',
+  secondaryBg: '#111111',
+  cardBg: '#181818',
+  white: '#FFFFFF',
+  textSecondary: '#A0A0A0',
+  border: 'rgba(255,255,255,0.08)',
+  success: '#52D726',
+  error: '#FF4444',
+  warning: '#FFA500',
+  glowGreen: 'rgba(125,255,42,0.15)',
+  glowGreenStrong: 'rgba(125,255,42,0.3)',
+};
