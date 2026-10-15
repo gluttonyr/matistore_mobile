@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "422873220684",
+    "project_id": "matistore-996c4",
+    "storage_bucket": "matistore-996c4.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:422873220684:android:49ce3564517a7e326d56e9",
+        "android_client_info": {
+          "package_name": "com.urbain_diligence.matistore_mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCMmrIfCfJcj0d_yJB3atfZM0if0N2_6U8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

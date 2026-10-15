@@ -18,9 +18,11 @@ export interface User {
   username: string;
   email: string;
   telephone: string;
+  image?: string | null;
   role: UserRole;
   active: boolean;
   googleId?: string | null;
+  appleId?: string | null;
   provider?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -62,7 +64,8 @@ export interface CreateUserDto {
 
 
   googleId?: string;
+  appleId?: string;
+  identityToken?: string;
 
   provider?: string;
 }
-

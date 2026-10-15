@@ -6,7 +6,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { ChevronDown, ChevronLeft, Eye, EyeOff, Lock } from 'lucide-react-native';
 import { useState } from 'react';
 import {
-  KeyboardAvoidingView, Platform,
+  Linking,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -18,7 +19,9 @@ import CountryPicker, {
   CountryCode,
   DARK_THEME,
 } from 'react-native-country-picker-modal';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Toast from 'react-native-toast-message';
+import { consumePendingAppleIdentityToken } from '@/hooks/useAppleAuth';
 
 
 export default function RegisterStep2() {
@@ -47,52 +50,71 @@ export default function RegisterStep2() {
 
   const handleCreate = async () => {
     try {
-    if (!phoneNumber || !password || !confirm) {
-      setError('Veuillez remplir tous les champs.');
-      return;
-    }
-    if (password.length < 8) {
-      setError('Le mot de passe doit contenir au moins 8 caractères.');
-      return;
-    }
-    if (password !== confirm) {
-      setError('Les mots de passe ne correspondent pas.');
-      return;
-    }
-    setError('');
-    setLoading(true);
-    await authService.register({
-      prenom: params.prenom as string,
-      nom: params.nom as string,
-      email: params.email as string,
-      telephone: fullTelephone,
-      password,
-      ...(params.googleId ? { googleId: params.googleId as string, provider: 'google' } : {}),
-    });
-    Toast.show({
-      type: 'success',
-      text1: 'Compte créé',
-      text2: 'Votre compte a été créé avec succès. Vous pouvez maintenant vous connecter.',
-    });
-    
+      if (!phoneNumber || !password || !confirm) {
+        setError('Veuillez remplir tous les champs.');
+        return;
+      }
+      if (password.length < 8) {
+        setError('Le mot de passe doit contenir au moins 8 caractères.');
+        return;
+      }
+      if (password !== confirm) {
+        setError('Les mots de passe ne correspondent pas.');
+        return;
+      }
+      setError('');
+      setLoading(true);
+      await authService.register({
+        prenom: params.prenom as string,
+        nom: params.nom as string,
+        username: `${params.nom} ${params.prenom}`.trim(),
+        email: params.email as string,
+        telephone: fullTelephone,
+        password,
+        ...(params.googleId ? { googleId: params.googleId as string, provider: 'google' } : {}),
+        ...(params.appleId ? {
+          appleId: params.appleId as string,
+          provider: 'apple',
+          identityToken: consumePendingAppleIdentityToken() ?? undefined,
+        } : {}),
+      });
+      Toast.show({
+        type: 'success',
+        text1: 'Compte créé',
+        text2: 'Votre compte a été créé avec succès. Vous pouvez maintenant vous connecter.',
+      });
+
       setLoading(false);
       router.replace('/(auth)/login');
-    
-  } catch (err) {
-    Toast.show({
-      type: 'error',
-      text1: 'Erreur',
-      text2: 'Une erreur est survenue lors de la création du compte. Veuillez réessayer.',
-    });
-    setLoading(false);
-    setError('Une erreur est survenue lors de la création du compte.');
-  }
-};
+
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Une erreur est survenue lors de la création du compte.';
+
+      setError(message);
+
+      Toast.show({
+        type: 'error',
+        text1: 'Erreur',
+        text2: message,
+      });
+      // Toast.show({
+      //   type: 'error',
+      //   text1: 'Erreur',
+      //   text2: 'Une erreur est survenue lors de la création du compte. Veuillez réessayer.',
+      // });
+      setLoading(false);
+      // setError(err.message);
+    }
+
+  };
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <LinearGradient
         colors={['rgba(125,255,42,0.05)', Colors.darkBg]}
@@ -222,7 +244,19 @@ export default function RegisterStep2() {
             <View style={styles.termsDot} />
             <Text style={styles.termsText}>
               En créant un compte, vous acceptez nos{' '}
-              <Text style={styles.termsLink}>conditions d'utilisation</Text>
+              <Text
+                style={styles.termsLink}
+                onPress={() => Linking.openURL('https://matistore.tech/privacy-rule')}
+              >
+                conditions d'utilisation
+              </Text>
+              {/* {' '}et notre{' '}
+              <Text
+                style={styles.termsLink}
+                onPress={() => Linking.openURL('https://matistore.tech/privacy-rule')}
+              >
+                politique de confidentialité
+              </Text> */}
             </Text>
           </View>
 

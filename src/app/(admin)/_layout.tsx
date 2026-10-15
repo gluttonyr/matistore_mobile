@@ -15,6 +15,7 @@ import ProfileScreen from './profile';
 import Badge from '@/components/ui/Badge';
 import { Colors } from '@/constants/colors';
 import { usePushNotificationRegistration } from '@/hooks/usePushNotificationRegistration';
+import { useAdminNotificationCapture } from '@/hooks/useAdminNotificationCapture';
 import { useForumHasNew } from '@/hooks/useForumHasNew';
 import { useUnreadChatsCount } from '@/hooks/useUnreadChatsCount';
 import { registerTabNavigator } from '@/utils/tabNavigation';
@@ -51,22 +52,29 @@ function TabIcon({ icon, focused, badge = 0, dot = false }: TabIconProps) {
 export default function TabsLayout() {
   const pagerRef = useRef<PagerView>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set([0]));
+  const targetIndexRef = useRef(0);
   const insets = useSafeAreaInsets();
 
   usePushNotificationRegistration();
+  useAdminNotificationCapture();
 
-  // Rafraîchis à chaque changement d'onglet : suffisant pour refléter l'état
-  // réel sans avoir besoin d'un événement socket dédié aux badges.
   const { count: chatsUnread } = useUnreadChatsCount(activeIndex);
   const { hasNew: forumHasNew } = useForumHasNew(activeIndex);
 
   const handleTabPress = useCallback((index: number) => {
+    if (targetIndexRef.current === index) return;
+    targetIndexRef.current = index;
+    setVisitedTabs((current) => new Set(current).add(index));
     pagerRef.current?.setPage(index);
   }, []);
 
   const handlePageSelected = useCallback(
     (e: { nativeEvent: { position: number } }) => {
-      setActiveIndex(e.nativeEvent.position);
+      const index = e.nativeEvent.position;
+      targetIndexRef.current = index;
+      setActiveIndex(index);
+      setVisitedTabs((current) => current.has(index) ? current : new Set(current).add(index));
     },
     [],
   );
@@ -77,7 +85,9 @@ export default function TabsLayout() {
     registerTabNavigator((key) => {
       const index = TABS.findIndex((t) => t.key === key);
       if (index >= 0) {
+        targetIndexRef.current = index;
         setActiveIndex(index);
+        setVisitedTabs((current) => new Set(current).add(index));
         pagerRef.current?.setPage(index);
       }
     });
@@ -93,9 +103,9 @@ export default function TabsLayout() {
         onPageSelected={handlePageSelected}
         overdrag={false}
       >
-        {TABS.map(({ key, Screen }) => (
+        {TABS.map(({ key, Screen }, index) => (
           <View key={key} style={styles.page}>
-            <Screen />
+            {visitedTabs.has(index) ? <Screen /> : null}
           </View>
         ))}
       </PagerView>

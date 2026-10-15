@@ -3,7 +3,6 @@ import { Download, X } from 'lucide-react-native';
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Dimensions,
   Image,
   Modal,
@@ -13,16 +12,23 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { InfoModal } from './infomodal';
+
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 type Props = {
   uri: string | null;
   onClose: () => void;
+  showDownload?: boolean;
 };
 
-export function ImagePreviewModal({ uri, onClose }: Props) {
+type InfoState = { type: 'success' | 'error' | 'warning'; title: string; message?: string } | null;
+
+export function ImagePreviewModal({ uri, onClose, showDownload = true }: Props) {
   const [downloading, setDownloading] = useState(false);
+  // Remplace les anciens Alert.alert(...) : état affiché via <InfoModal>.
+  const [infoModal, setInfoModal] = useState<InfoState>(null);
 
   const handleDownload = async () => {
     if (!uri) return;
@@ -32,13 +38,17 @@ export function ImagePreviewModal({ uri, onClose }: Props) {
       // (ex: Expo Go, ou dev client pas encore reconstruit avec expo-media-library)
       // rejettent alors la promesse et sont correctement attrapés ci-dessous.
       const [MediaLibrary, FileSystem] = await Promise.all([
-        import('expo-media-library'),
+        import('expo-media-library/legacy'),
         import('expo-file-system/legacy'),
       ]);
 
-      const { status } = await MediaLibrary.requestPermissionsAsync();
+      const { status } = await MediaLibrary.requestPermissionsAsync(true);
       if (status !== 'granted') {
-        Alert.alert('Permission refusée', "Autorisez l'accès à la galerie pour télécharger.");
+        setInfoModal({
+          type: 'warning',
+          title: 'Permission refusée',
+          message: "Autorisez l'accès à la galerie pour télécharger.",
+        });
         return;
       }
 
@@ -51,17 +61,22 @@ export function ImagePreviewModal({ uri, onClose }: Props) {
       }
 
       await MediaLibrary.saveToLibraryAsync(localUri);
-      Alert.alert('Succès', 'Image sauvegardée dans la galerie !');
+      setInfoModal({
+        type: 'success',
+        title: 'Succès',
+        message: 'Image sauvegardée dans la galerie !',
+      });
     } catch (e) {
       console.error('Download error:', e);
       const isMissingNativeModule = e instanceof Error && /native module/i.test(e.message);
       if (isMissingNativeModule) {
-        Alert.alert(
-          'Indisponible sur cette version de l\'app',
-          "Le téléchargement nécessite un build natif :\nnpx expo prebuild\nnpx expo run:android",
-        );
+        setInfoModal({
+          type: 'error',
+          title: 'Indisponible sur cette version de l\'app',
+          message: "Le téléchargement nécessite un build natif :\nnpx expo prebuild\nnpx expo run:android",
+        });
       } else {
-        Alert.alert('Erreur', "Impossible de sauvegarder l'image.");
+        setInfoModal({ type: 'error', title: 'Erreur', message: "Impossible de sauvegarder l'image." });
       }
     } finally {
       setDownloading(false);
@@ -69,39 +84,49 @@ export function ImagePreviewModal({ uri, onClose }: Props) {
   };
 
   return (
-    <Modal
-      visible={!!uri}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={onClose}
-    >
-      <View style={st.overlay}>
-        <TouchableOpacity style={st.closeBtn} onPress={onClose} activeOpacity={0.8}>
-          <X color="#fff" size={22} />
-        </TouchableOpacity>
+    <>
+      <Modal
+        visible={!!uri}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={onClose}
+      >
+        <View style={st.overlay}>
+          <TouchableOpacity style={st.closeBtn} onPress={onClose} activeOpacity={0.8}>
+            <X color="#fff" size={22} />
+          </TouchableOpacity>
 
-        {uri && (
-          <Image source={{ uri }} style={st.image} resizeMode="contain" />
-        )}
+          {uri && <Image source={{ uri }} style={st.image} resizeMode="contain" />}
 
-        <TouchableOpacity
-          style={[st.downloadBtn, downloading && st.downloadBtnDisabled]}
-          onPress={handleDownload}
-          activeOpacity={0.85}
-          disabled={downloading}
-        >
-          {downloading ? (
-            <ActivityIndicator color="#000" size="small" />
-          ) : (
-            <>
-              <Download color="#000" size={18} />
-              <Text style={st.downloadText}>Télécharger</Text>
-            </>
+          {showDownload && (
+            <TouchableOpacity
+              style={[st.downloadBtn, downloading && st.downloadBtnDisabled]}
+              onPress={handleDownload}
+              activeOpacity={0.85}
+              disabled={downloading}
+            >
+              {downloading ? (
+                <ActivityIndicator color="#000" size="small" />
+              ) : (
+                <>
+                  <Download color="#000" size={18} />
+                  <Text style={st.downloadText}>Télécharger</Text>
+                </>
+              )}
+            </TouchableOpacity>
           )}
-        </TouchableOpacity>
-      </View>
-    </Modal>
+        </View>
+      </Modal>
+
+      <InfoModal
+        visible={!!infoModal}
+        onClose={() => setInfoModal(null)}
+        type={infoModal?.type ?? 'info'}
+        title={infoModal?.title ?? ''}
+        message={infoModal?.message}
+      />
+    </>
   );
 }
 

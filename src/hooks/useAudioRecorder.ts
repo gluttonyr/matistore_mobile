@@ -1,5 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Alert } from 'react-native';
+import {
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
+  useAudioRecorder as useExpoAudioRecorder,
+} from 'expo-audio';
 
 export type AudioHook = {
   isRecording: boolean;
@@ -11,37 +17,27 @@ export type AudioHook = {
 };
 
 export function useAudioRecorder(): AudioHook {
-  const [isAvailable, setIsAvailable] = useState(false);
+  // Le recorder DOIT être créé via le hook, pas via une fonction dynamique.
+  const recorder = useExpoAudioRecorder(RecordingPresets.HIGH_QUALITY);
+
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
-  const recorderRef = useRef<any>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const AudioModuleRef = useRef<any>(null);
-
-  useEffect(() => {
-    try {
-      const expoAudio = require('expo-audio');
-      AudioModuleRef.current = expoAudio;
-      setIsAvailable(true);
-    } catch {
-      setIsAvailable(false);
-    }
-  }, []);
 
   const startRecording = async (): Promise<boolean> => {
-    if (!AudioModuleRef.current) return false;
     try {
-      const { AudioModule, RecordingPresets } = AudioModuleRef.current;
       const status = await AudioModule.requestRecordingPermissionsAsync();
       if (!status.granted) {
         Alert.alert('Permission refusée', 'Autorisation micro requise.');
         return false;
       }
-      await AudioModule.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const recorder = AudioModuleRef.current.createAudioRecorder(RecordingPresets.HIGH_QUALITY);
+
+      // setAudioModeAsync est un export direct du module, pas une méthode de AudioModule.
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+
       await recorder.prepareToRecordAsync();
       recorder.record();
-      recorderRef.current = recorder;
+
       setIsRecording(true);
       setRecordingDuration(0);
       timerRef.current = setInterval(() => setRecordingDuration((d) => d + 1), 1000);
@@ -54,11 +50,9 @@ export function useAudioRecorder(): AudioHook {
 
   const stopRecording = async (): Promise<{ uri: string; blob: Blob } | null> => {
     try {
-      if (!recorderRef.current) return null;
       if (timerRef.current) clearInterval(timerRef.current);
-      await recorderRef.current.stop();
-      const uri = recorderRef.current.uri;
-      recorderRef.current = null;
+      await recorder.stop();
+      const uri = recorder.uri;
       setIsRecording(false);
       setRecordingDuration(0);
       if (!uri) return null;
@@ -74,13 +68,21 @@ export function useAudioRecorder(): AudioHook {
 
   const cancelRecording = async () => {
     if (timerRef.current) clearInterval(timerRef.current);
-    if (recorderRef.current) {
-      try { await recorderRef.current.stop(); } catch { }
+    try {
+      await recorder.stop();
+    } catch {
+      // déjà arrêté ou jamais démarré
     }
-    recorderRef.current = null;
     setIsRecording(false);
     setRecordingDuration(0);
   };
 
-  return { isAvailable, isRecording, recordingDuration, startRecording, stopRecording, cancelRecording };
+  return {
+    isAvailable: true,
+    isRecording,
+    recordingDuration,
+    startRecording,
+    stopRecording,
+    cancelRecording,
+  };
 }

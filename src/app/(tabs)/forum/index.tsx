@@ -1,21 +1,31 @@
 import { ChatInputBar } from '@/components/ChatinputBar';
 import { ChatMessage } from '@/components/ChatMessage';
+import { DateSeparator } from '@/components/dateSeparator';
+import { HistoryLoader } from '@/components/historyLoader';
 import { ImagePreviewModal } from '@/components/ImagePreviewModel';
 import { ConnectionErrorState } from '@/components/ui/ConnectionErrorState';
+import { ChatBackground } from '@/components/ChatBackground';
 import { Colors } from '@/constants/colors';
+import type { Discussion } from '@/data_api/models/discussion.types';
 import { getApiErrorMessage } from '@/data_api/lib/logger';
-import { DiscussionType } from '@/data_api/models/discussion.types';
-import { discussionService } from '@/data_api/services/discussionService';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { useChat } from '@/hooks/useChat';
+import { useChatSections } from '@/hooks/useChatSection';
+import {
+  fetchForumDiscussionSummary,
+  FORUM_DISCUSSION_QUERY_KEY,
+  FORUM_HAS_NEW_QUERY_KEY,
+} from '@/hooks/useForumHasNew';
 import { forumStorage } from '@/storage/forumStorage';
 import { Lock, MessageSquare, Pin } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ActivityIndicator,
-  FlatList,
   KeyboardAvoidingView,
   Platform,
+  RefreshControl,
+  SectionList,
   StatusBar,
   StyleSheet,
   Text,
@@ -23,52 +33,93 @@ import {
 } from 'react-native';
 
 export default function ForumScreen() {
+  const queryClient = useQueryClient();
   const [discussionId, setDiscussionId] = useState<string | null>(null);
   const [discussionActiveInitial, setDiscussionActiveInitial] = useState(true);
   const [forumLoading, setForumLoading] = useState(true);
   const [forumError, setForumError] = useState('');
 
+  const applyForumSummary = useCallback((forum: Discussion | null) => {
+    if (!forum) {
+      setForumError('Le forum est momentanément indisponible.');
+      return;
+    }
+    setDiscussionId(forum.trackingId);
+    setDiscussionActiveInitial(forum.active);
+    void forumStorage.setLastSeenAt(new Date().toISOString()).catch(() => {});
+    queryClient.setQueryData(FORUM_HAS_NEW_QUERY_KEY, false);
+  }, [queryClient]);
+
   const loadForum = useCallback(() => {
-    setForumLoading(true);
     setForumError('');
-    discussionService.getByType(DiscussionType.FORUM)
-      .then((list) => {
-        const forum = list[0];
-        if (forum) {
-          setDiscussionId(forum.trackingId);
-          setDiscussionActiveInitial(forum.active);
-          // Ouvrir le forum = l'avoir vu : efface la pastille "nouveau" de l'onglet.
-          forumStorage.setLastSeenAt(new Date().toISOString());
-        } else {
-          setForumError('Le forum est momentanément indisponible.');
-        }
+    const cachedForum = queryClient.getQueryData<Discussion | null>(FORUM_DISCUSSION_QUERY_KEY);
+    if (cachedForum) {
+      applyForumSummary(cachedForum);
+      setForumLoading(false);
+    } else {
+      setForumLoading(true);
+    }
+
+    queryClient.fetchQuery({
+      queryKey: FORUM_DISCUSSION_QUERY_KEY,
+      queryFn: fetchForumDiscussionSummary,
+      staleTime: 20_000,
+      retry: false,
+    })
+      .then((forum) => {
+        if (forum) applyForumSummary(forum);
+        else if (!cachedForum) setForumError('Le forum est momentanément indisponible.');
       })
-      .catch((err) => setForumError(getApiErrorMessage(err)))
+      .catch((err) => {
+        if (!cachedForum) setForumError(getApiErrorMessage(err));
+      })
       .finally(() => setForumLoading(false));
-  }, []);
+  }, [applyForumSummary, queryClient]);
 
   useEffect(() => {
     loadForum();
   }, [loadForum]);
 
-  const { messages, loading, sending, discussionActive, sendText, sendFile, sendSticker, currentUserId } =
-    useChat(discussionId ?? '');
+  const { messages, loading, sending, discussionActive, sendText, sendFile, sendSticker, currentUserId,loadMoreHistory,
+    loadingMore,
+    hasMoreHistory, } =
+    useChat(discussionId ?? '', 40);
 
   const [text, setText] = useState('');
   const [previewUri, setPreviewUri] = useState<string | null>(null);
-  const listRef = useRef<FlatList>(null);
+  const listRef = useRef<SectionList>(null);
   const audio = useAudioRecorder();
 
   const locked = (discussionActive ?? discussionActiveInitial) === false;
   const pinnedMessage = messages.find((m) => m.epingle && !m.isDeleted);
 
-  const scrollToBottom = useCallback(() => {
-    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 120);
-  }, []);
+  const sections = useChatSections(messages);
 
-  useEffect(() => {
-    if (messages.length > 0) scrollToBottom();
-  }, [messages.length]);
+  const scrollToBottom = useCallback((animated = true) => {
+    setTimeout(() => {
+      if (!sections.length) return;
+      const lastSectionIndex = sections.length - 1;
+      const lastItemIndex = sections[lastSectionIndex].data.length - 1;
+      try {
+        listRef.current?.scrollToLocation({
+          sectionIndex: lastSectionIndex,
+          itemIndex: lastItemIndex,
+          animated,
+          viewPosition: 1,
+        });
+      } catch {}
+    }, 120);
+  }, [sections]);
+
+  const lastMessageIdRef = useRef<string | null>(null);
+useEffect(() => {
+  if (messages.length === 0) return;
+  const lastId = messages[messages.length - 1].trackingId;
+  if (lastId !== lastMessageIdRef.current) {
+    lastMessageIdRef.current = lastId;
+    scrollToBottom();
+  }
+}, [messages]);
 
   const handleSendText = () => {
     if (!text.trim() || locked) return;
@@ -77,11 +128,14 @@ export default function ForumScreen() {
     scrollToBottom();
   };
 
+
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      <ChatBackground variant="forum" />
       <StatusBar barStyle="light-content" />
 
       {/* ── Header ── */}
@@ -124,15 +178,26 @@ export default function ForumScreen() {
           <ActivityIndicator color={Colors.primaryGreen} size="large" />
         </View>
       ) : (
-        <FlatList
+        <SectionList
           ref={listRef}
-          data={messages}
+          sections={sections}
           keyExtractor={(item) => item.trackingId}
           contentContainerStyle={styles.msgList}
+          stickySectionHeadersEnabled
+          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+          refreshControl={
+    <RefreshControl
+      refreshing={loadingMore}
+      onRefresh={loadMoreHistory}
+      tintColor={Colors.primaryGreen}
+      colors={[Colors.primaryGreen]}
+      progressBackgroundColor={Colors.cardBg}
+    />
+  }
+renderSectionHeader={({ section }) => <DateSeparator label={section.title} />}
           renderItem={({ item }) => (
             <ChatMessage item={item} currentUserId={currentUserId} onImagePress={setPreviewUri} />
           )}
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
           ListEmptyComponent={() => (
             <View style={styles.emptyWrap}>
               <Text style={styles.emptyText}>Aucun message. Soyez le premier à écrire !</Text>

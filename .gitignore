@@ -41,3 +41,13 @@ example
 # generated native folders
 /ios
 /android
+
+# generated native module builds and temporary inspection repositories
+modules/**/android/build/
+.eas-archive-inspect/
+
+# Android signing keystores
+*.keystore
+
+# Local IDE cache
+.idea/caches/deviceStreaming.xml

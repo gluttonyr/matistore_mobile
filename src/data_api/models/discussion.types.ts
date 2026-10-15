@@ -12,6 +12,16 @@ export interface Discussion {
   lastMessageAt?: string | null;
   lastMessageContent?: string | null;
   username?: string | null;
+  userProfile?: {
+    trackingId: string;
+    nom: string;
+    prenom: string;
+    username: string;
+    email: string;
+    telephone?: string | null;
+    active: boolean;
+    createdAt: string;
+  };
   unreadCount?: number;
   /** false = discussion verrouillée (ex: forum verrouillé, lecture seule pour les non-admins). */
   active: boolean;
@@ -30,3 +40,14 @@ export enum DiscussionType {
  }
 
 export type Discussions = Discussion[];
+
+export type AdminDiscussionCategory = 'all' | 'unread' | 'depot' | 'retrait' | 'support';
+
+export interface AdminDiscussionPage {
+  items: Discussion[];
+  total: number;
+  page: number;
+  limit: number;
+  hasMore: boolean;
+  counts: Record<AdminDiscussionCategory, number>;
+}

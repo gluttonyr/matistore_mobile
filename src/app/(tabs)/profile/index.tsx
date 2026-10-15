@@ -3,10 +3,16 @@ import { User as UserModel, UserRole } from '@/data_api/models/user.types';
 import { userService } from '@/data_api/services/userService';
 import { useAuth } from '@/hooks/useAuth';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Check, ChevronRight, Edit3, LogOut, Mail, Phone, User, X } from 'lucide-react-native';
+import { useFileUrl } from '@/hooks/useFileUrl';
+import { SocialLinks } from '@/components/SocialLinks';
+import { authStorage } from '@/storage/authStorage';
+import { useQueryClient } from '@tanstack/react-query';
+import * as ImagePicker from 'expo-image-picker';
+import { Check, ChevronRight, Edit3, ImagePlus, LogOut, Mail, Phone, User, X } from 'lucide-react-native';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -19,19 +25,46 @@ import {
 import Toast from 'react-native-toast-message';
 
 // ─── Avatar initiales ────────────────────────────────────────────────────────
-function AvatarInitials({ prenom, nom }: { prenom: string; nom: string }) {
+function AvatarInitials({
+  prenom,
+  nom,
+  imageUri,
+  onPress,
+  disabled,
+}: {
+  prenom: string;
+  nom: string;
+  imageUri?: string;
+  onPress: () => void;
+  disabled: boolean;
+}) {
   const initials = `${prenom?.[0] ?? ''}${nom?.[0] ?? ''}`.toUpperCase();
   return (
-    <View style={styles.avatarRing}>
-      <LinearGradient
-        colors={[Colors.primaryGreen, Colors.secondaryGreen ?? '#4caf50']}
-        style={styles.avatarGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      >
-        <Text style={styles.avatarText}>{initials}</Text>
-      </LinearGradient>
-    </View>
+    <TouchableOpacity
+      style={styles.avatarContainer}
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel="Modifier la photo de profil"
+      hitSlop={8}
+    >
+      <View style={styles.avatarRing}>
+        <LinearGradient
+          colors={[Colors.primaryGreen, Colors.secondaryGreen ?? '#4caf50']}
+          style={styles.avatarGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          {imageUri
+            ? <Image source={{ uri: imageUri }} style={styles.avatarImage} />
+            : <Text style={styles.avatarText}>{initials}</Text>}
+        </LinearGradient>
+      </View>
+      <View pointerEvents="none" style={styles.avatarEditButton}>
+        <ImagePlus color="#000" size={21} />
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -94,6 +127,8 @@ function EditableField({
 // ─── Page principale ─────────────────────────────────────────────────────────
 export default function ProfilePage() {
   const { user, logout } = useAuth();
+  const queryClient = useQueryClient();
+  const profileImageUri = useFileUrl('profiles', user?.image);
 
     // const user = {
     //   nom:"John",
@@ -112,19 +147,79 @@ export default function ProfilePage() {
   const [nom, setNom] = useState(user?.nom ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
   const [telephone, setTelephone] = useState(user?.telephone ?? '');
+  const [pickedImage, setPickedImage] = useState<ImagePicker.ImagePickerAsset | null>(null);
 
   const hasChanges =
     prenom !== user?.prenom ||
     nom !== user?.nom ||
     email !== user?.email ||
-    telephone !== user?.telephone;
+    telephone !== user?.telephone ||
+    pickedImage !== null;
 
   const handleCancel = () => {
     setPrenom(user?.prenom ?? '');
     setNom(user?.nom ?? '');
     setEmail(user?.email ?? '');
     setTelephone(user?.telephone ?? '');
+    setPickedImage(null);
     setIsEditing(false);
+  };
+
+  const chooseProfileImage = async (): Promise<ImagePicker.ImagePickerAsset | null> => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Toast.show({ type: 'error', text1: 'Permission requise', text2: 'Autorisez l’accès à la galerie pour choisir une photo.' });
+        return null;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.85,
+      });
+      if (!result.canceled && result.assets[0]) {
+        return result.assets[0];
+      }
+    } catch {
+      Toast.show({ type: 'error', text1: 'Erreur', text2: 'Impossible d’ouvrir la galerie de photos.' });
+    }
+    return null;
+  };
+
+  const saveProfileImage = async (image: ImagePicker.ImagePickerAsset) => {
+    if (!user?.trackingId) return;
+
+    try {
+      setLoading(true);
+      const formData = new FormData();
+      formData.append('data', JSON.stringify({}));
+      formData.append('file', {
+        uri: image.uri,
+        name: image.fileName ?? image.uri.split('/').pop() ?? `profile_${Date.now()}.jpg`,
+        type: image.mimeType ?? 'image/jpeg',
+      } as any);
+      const updatedUser = await userService.update(user.trackingId, formData);
+      queryClient.setQueryData(['user'], updatedUser);
+      await authStorage.setUser(updatedUser);
+      Toast.show({ type: 'success', text1: 'Photo mise à jour', text2: 'Votre photo de profil a été enregistrée.' });
+    } catch {
+      Toast.show({ type: 'error', text1: 'Erreur', text2: 'Impossible de mettre à jour la photo de profil.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAvatarPress = async () => {
+    const image = await chooseProfileImage();
+    if (!image) return;
+
+    if (isEditing) {
+      setPickedImage(image);
+      return;
+    }
+    await saveProfileImage(image);
   };
 
   const handleSave = async () => {
@@ -140,9 +235,23 @@ export default function ProfilePage() {
 
     try {
       setLoading(true);
-      const formData = new FormData();
-      formData.append('data', JSON.stringify({ prenom, nom, email, telephone }));
-      await userService.update(user.trackingId, formData);
+      const profileData = { prenom, nom, email, telephone };
+      let updateData: FormData | typeof profileData = profileData;
+      if (pickedImage) {
+        const formData = new FormData();
+        formData.append('data', JSON.stringify(profileData));
+        const name = pickedImage.fileName ?? pickedImage.uri.split('/').pop() ?? `profile_${Date.now()}.jpg`;
+        formData.append('file', {
+          uri: pickedImage.uri,
+          name,
+          type: pickedImage.mimeType ?? 'image/jpeg',
+        } as any);
+        updateData = formData;
+      }
+      const updatedUser = await userService.update(user.trackingId, updateData);
+      queryClient.setQueryData(['user'], updatedUser);
+      await authStorage.setUser(updatedUser);
+      setPickedImage(null);
       Toast.show({ type: 'success', text1: 'Profil mis à jour', text2: 'Vos informations ont été enregistrées.' });
       setIsEditing(false);
     } catch {
@@ -163,7 +272,7 @@ export default function ProfilePage() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <LinearGradient
         colors={['rgba(125,255,42,0.07)', Colors.darkBg]}
@@ -208,7 +317,13 @@ export default function ProfilePage() {
 
         {/* ── Avatar + identité ── */}
         <View style={styles.heroCard}>
-          <AvatarInitials prenom={prenom} nom={nom} />
+          <AvatarInitials
+            prenom={prenom}
+            nom={nom}
+            imageUri={isEditing ? pickedImage?.uri ?? profileImageUri : profileImageUri}
+            onPress={() => void handleAvatarPress()}
+            disabled={loading}
+          />
 
           <View style={styles.heroInfo}>
             <Text style={styles.heroName}>{prenom} {nom}</Text>
@@ -279,6 +394,7 @@ export default function ProfilePage() {
           <Text style={styles.logoutText}>Se déconnecter</Text>
           <ChevronRight color="#FF6B6B" size={16} style={{ marginLeft: 'auto' }} />
         </TouchableOpacity>
+        <SocialLinks variant="contact" />
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -351,9 +467,25 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'rgba(125,255,42,0.35)',
   },
+  avatarContainer: { position: 'relative' },
   avatarGradient: {
     flex: 1,
     borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 32 },
+  avatarEditButton: {
+    position: 'absolute',
+    right: -7,
+    bottom: -7,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: Colors.primaryGreen,
+    borderWidth: 2,
+    borderColor: Colors.cardBg,
     alignItems: 'center',
     justifyContent: 'center',
   },

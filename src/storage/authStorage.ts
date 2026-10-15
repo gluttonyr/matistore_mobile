@@ -3,19 +3,23 @@ import { User } from '@/data_api/models/user.types';
 
 const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'auth_user';
+let tokenCache: string | null | undefined;
 
 export const authStorage = {
   async getToken() {
-    return await SecureStore.getItemAsync(TOKEN_KEY);
+    if (tokenCache !== undefined) return tokenCache;
+    tokenCache = await SecureStore.getItemAsync(TOKEN_KEY);
+    return tokenCache;
   },
 
   async setToken(token: string) {
-    return await SecureStore.setItemAsync(TOKEN_KEY, token);
+    await SecureStore.setItemAsync(TOKEN_KEY, token);
+    tokenCache = token;
   },
 
   async removeToken() {
-    console.log("token confirmé le remove")
-    return await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
+    tokenCache = null;
   },
 
   /** Profil mis en cache localement : permet de connaître le rôle de

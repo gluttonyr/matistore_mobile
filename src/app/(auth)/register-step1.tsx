@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  ScrollView, KeyboardAvoidingView, Platform,
+  ScrollView, Platform,
 } from 'react-native';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,6 +10,9 @@ import { User, Mail, ChevronLeft } from 'lucide-react-native';
 import { Colors } from '@/constants/colors';
 import GreenButton from '@/components/ui/GreenButton';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
+import { useAppleAuth } from '@/hooks/useAppleAuth';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 export default function RegisterStep1() {
   const [prenom, setPrenom] = useState('');
@@ -17,6 +20,7 @@ export default function RegisterStep1() {
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const { signInWithGoogle, loading: googleLoading } = useGoogleAuth();
+  const { signInWithApple } = useAppleAuth();
 
   const handleNext = () => {
     if (!prenom || !nom || !email) {
@@ -32,7 +36,10 @@ export default function RegisterStep1() {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       <LinearGradient
         colors={['rgba(125,255,42,0.05)', Colors.darkBg]}
         style={StyleSheet.absoluteFill}
@@ -135,6 +142,16 @@ export default function RegisterStep1() {
             </Text>
           </TouchableOpacity>
 
+          {Platform.OS === 'ios' && (
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_UP}
+              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+              cornerRadius={10}
+              style={styles.appleBtn}
+              onPress={signInWithApple}
+            />
+          )}
+
           <View style={styles.loginRow}>
             <Text style={styles.loginText}>Déjà un compte ? </Text>
             <TouchableOpacity onPress={() => router.push('/(auth)/login')}>
@@ -214,6 +231,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   googleText: { color: Colors.white, fontSize: 15, fontWeight: '600' },
+  appleBtn: { width: '100%', height: 50, marginTop: 12 },
   loginRow: { flexDirection: 'row', justifyContent: 'center' },
   loginText: { color: Colors.textSecondary, fontSize: 14 },
   loginLink: { color: Colors.primaryGreen, fontSize: 14, fontWeight: '700' },

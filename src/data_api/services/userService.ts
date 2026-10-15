@@ -6,6 +6,8 @@ import api from '@/data_api/lib/api';
 import { User } from '@/data_api/models/user.types';
 import { logError } from '@/data_api/lib/logger';
 
+type ApiResponse<T> = { data: T; message?: string; status?: number };
+
 export const userService = {
   /**
    * Récupérer tous les utilisateurs (Admin)
@@ -144,17 +146,13 @@ formData.append('data', JSON.stringify({ liens }));
     }
   },
 
-  update: async (id: string, user: any): Promise<User> => {
+  update: async (id: string, user: FormData | Partial<User>): Promise<User> => {
     try {
-     
-
-
-    
-      return await api.put<User>(`/users/${id}`, user, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      const config = typeof FormData !== 'undefined' && user instanceof FormData
+        ? { headers: { 'Content-Type': 'multipart/form-data' } }
+        : undefined;
+      const response = await api.put<ApiResponse<User>>(`/users/${id}`, user, config);
+      return response.data;
     } catch (error) {
       logError('Update user failed');
       throw error;

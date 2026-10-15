@@ -52,7 +52,22 @@ export const logDebug = (message: string, data?: unknown) => {
 export const getApiErrorMessage = (error: unknown): string => {
   const apiError = error as Record<string, unknown>;
   const response = apiError?.response as Record<string, unknown>;
+  const responseData = response?.data as Record<string, unknown> | undefined;
   const status = response?.status as number | undefined;
+  const serverMessage = responseData?.message;
+  if (typeof serverMessage === 'string' && serverMessage.trim()) {
+    return serverMessage.trim();
+  }
+  if (
+    Array.isArray(serverMessage)
+    && serverMessage.every((message) => typeof message === 'string')
+  ) {
+    return serverMessage.join('\n');
+  }
+
+  if (error instanceof Error && error.name === 'Error' && error.message.trim()) {
+    return error.message.trim();
+  }
 
   if (!response) {
     // Pas de réponse du tout (hors-ligne, serveur injoignable, timeout) : à

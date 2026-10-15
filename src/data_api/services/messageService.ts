@@ -61,9 +61,14 @@ export const messageService = {
   /**
    * Fetch message history for a discussion.
    */
-  getByDiscussion: async (discussionId: string): Promise<Message[]> => {
+  getByDiscussion: async (discussionId: string, before?: string, limit?: number): Promise<Message[]> => {
     try {
-      const response = await api.get<ApiResponse<Message[]>>(`/messages/discussion/${discussionId}`);
+      const params = [
+        before ? `before=${encodeURIComponent(before)}` : '',
+        limit ? `limit=${limit}` : '',
+      ].filter(Boolean).join('&');
+      const query = params ? `?${params}` : '';
+      const response = await api.get<ApiResponse<Message[]>>(`/messages/discussion/${discussionId}${query}`);
       return response.data;
     } catch (error) {
       logError('Get messages by discussion failed');

@@ -1,10 +1,16 @@
 import { ChatInputBar } from '@/components/ChatinputBar';
 import { ChatMessage } from '@/components/ChatMessage';
+import { DateSeparator } from '@/components/dateSeparator';
 import { ImagePreviewModal } from '@/components/ImagePreviewModel';
+import { ChatBackground } from '@/components/ChatBackground';
+
 import { Colors } from '@/constants/colors';
 import { MessageType } from '@/data_api/models/message.types';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { useChat } from '@/hooks/useChat';
+import { useChatSections } from '@/hooks/useChatSection';
+
+import { useClientPresence } from '@/hooks/useClientPresence';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
   ArrowDownToLine,
@@ -12,19 +18,22 @@ import {
   ChevronDown,
   ChevronLeft,
   HeadphonesIcon,
+  History,
   Shield,
 } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
-  KeyboardAvoidingView,
   Platform,
+  RefreshControl,
+  SectionList,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type MessageCategory = 'deposit' | 'withdrawal' | 'support';
 
@@ -65,8 +74,10 @@ const QUICK_REPLIES: Record<MessageCategory, string[]> = {
   ],
   support: [
     'Bonjour, comment puis-je vous aider ?',
+    'Bonsoir, comment puis-je vous aider ?',
     'Votre problème a été résolu ✅',
-    'Nous escaladons votre ticket',
+    'Votre demande de rétrait a bien été reçu ✅',
+    'Votre demande de Dépot a bien été reçu ✅',
   ],
 };
 
@@ -80,23 +91,45 @@ export default function AdminChatDetailScreen() {
   const cat = (category as MessageCategory) || 'support';
   const catConf = CATEGORY_CONFIG[cat];
 
-  // ✅ Mêmes données et fonctions que ChatDetailScreen (texte, fichier, sticker)
-  const { messages, loading, sending, sendText, sendFile, sendSticker, currentUserId } =
+  const { messages, loading, sending, sendText, sendFile, sendSticker, currentUserId, deleteMessage, pinMessage, unpinMessage,loadMoreHistory,
+    loadingMore,
+    hasMoreHistory, } =
     useChat(id);
 
   const [text, setText] = useState('');
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [showQuickReplies, setShowQuickReplies] = useState(false);
-  const listRef = useRef<FlatList>(null);
+  const listRef = useRef<SectionList>(null);
   const audio = useAudioRecorder();
+  const { online: clientOnline } = useClientPresence(id);
 
-  const scrollToBottom = useCallback(() => {
-    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 120);
-  }, []);
+  const sections = useChatSections(messages);
 
-  useEffect(() => {
-    if (messages.length > 0) scrollToBottom();
-  }, [messages.length]);
+  const scrollToBottom = useCallback((animated = true) => {
+    setTimeout(() => {
+      if (!sections.length) return;
+      const lastSectionIndex = sections.length - 1;
+      const lastItemIndex = sections[lastSectionIndex].data.length - 1;
+      try {
+        listRef.current?.scrollToLocation({
+          sectionIndex: lastSectionIndex,
+          itemIndex: lastItemIndex,
+          animated,
+          viewPosition: 1,
+        });
+      } catch {}
+    }, 120);
+  }, [sections]);
+
+  const lastMessageIdRef = useRef<string | null>(null);
+useEffect(() => {
+  if (messages.length === 0) return;
+  const lastId = messages[messages.length - 1].trackingId;
+  if (lastId !== lastMessageIdRef.current) {
+    lastMessageIdRef.current = lastId;
+    scrollToBottom();
+  }
+}, [messages]);
 
   const handleSendText = () => {
     if (!text.trim()) return;
@@ -123,12 +156,15 @@ export default function AdminChatDetailScreen() {
     sendSticker(stickerImage);
     scrollToBottom();
   };
+  const insets = useSafeAreaInsets();
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
     >
+      <ChatBackground variant="admin" iconColor="#FFFFFF" />
       {/* ── Header ── */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -138,22 +174,32 @@ export default function AdminChatDetailScreen() {
           {catConf.icon}
         </View>
         <View style={styles.headerInfo}>
-          <Text style={styles.headerName}>{name}</Text>
+          <Text style={styles.headerName} numberOfLines={1} ellipsizeMode="tail">
+            {name}
+          </Text>
           <View style={styles.headerSubRow}>
             <View style={[styles.catPill, { backgroundColor: catConf.bg }]}>
               <Text style={[styles.catPillText, { color: catConf.color }]}>
                 {catConf.label}
               </Text>
             </View>
-            <Text style={styles.headerStatus}>
-              {loading ? 'Chargement...' : 'En ligne'}
-            </Text>
+            {/* <Text style={styles.headerStatus}>
+              {loading ? '' : clientOnline ? 'En ligne' : 'Hors ligne'}
+            </Text> */}
           </View>
         </View>
-        <View style={styles.adminIndicator}>
-          <Shield color="#A78BFA" size={14} />
-          <Text style={styles.adminIndicatorText}>Admin</Text>
-        </View>
+        {cat !== 'support' && (
+          <TouchableOpacity
+            style={styles.transactionsButton}
+            accessibilityLabel="Voir les transactions de cet utilisateur"
+            onPress={() => router.push({
+              pathname: '/admin_transactions',
+              params: { discussionId: id, clientName: name },
+            })}
+          >
+            <History color={Colors.white} size={20} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* ── Messages ── */}
@@ -162,21 +208,34 @@ export default function AdminChatDetailScreen() {
           <ActivityIndicator color={Colors.primaryGreen} size="large" />
         </View>
       ) : (
-        <FlatList
+        <SectionList
           ref={listRef}
-          data={messages}
+          sections={sections}
           keyExtractor={(item) => item.trackingId}
           contentContainerStyle={styles.msgList}
+          stickySectionHeadersEnabled
+          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+          refreshControl={
+    <RefreshControl
+      refreshing={loadingMore}
+      onRefresh={loadMoreHistory}
+      tintColor={Colors.primaryGreen}
+      colors={[Colors.primaryGreen]}
+      progressBackgroundColor={Colors.cardBg}
+    />
+  }
+          renderSectionHeader={({ section }) => <DateSeparator label={section.title} />}
           renderItem={({ item }) => (
             <ChatMessage
               item={item}
               currentUserId={currentUserId}
               onImagePress={setPreviewUri}
+              allowModeration
+              onDelete={deleteMessage}
+              onPin={pinMessage}
+              onUnpin={unpinMessage}
             />
           )}
-          onContentSizeChange={() =>
-            listRef.current?.scrollToEnd({ animated: false })
-          }
           ListEmptyComponent={() => (
             <View style={styles.emptyWrap}>
               <Text style={styles.emptyText}>Aucun message pour le moment.</Text>
@@ -229,7 +288,7 @@ export default function AdminChatDetailScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* ── Input bar complet (texte, fichier, mic, sticker) — identique à ChatDetailScreen ── */}
+      {/* ── Input bar complet (texte, fichier, mic, sticker) ── */}
       <ChatInputBar
         text={text}
         onChangeText={setText}
@@ -276,19 +335,16 @@ const styles = StyleSheet.create({
   catPill: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5 },
   catPillText: { fontSize: 10, fontWeight: '700' },
   headerStatus: { color: Colors.primaryGreen, fontSize: 11 },
-  adminIndicator: {
-    flexDirection: 'row',
+  transactionsButton: {
+    width: 36,
+    height: 36,
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(167,139,250,0.1)',
+    justifyContent: 'center',
+    borderRadius: 10,
+    backgroundColor: Colors.cardBg,
     borderWidth: 1,
-    borderColor: 'rgba(167,139,250,0.3)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    borderColor: Colors.border,
   },
-  adminIndicatorText: { color: '#A78BFA', fontSize: 11, fontWeight: '700' },
-
   msgList: { padding: 16, gap: 6, paddingBottom: 8 },
 
   quickToggleRow: {

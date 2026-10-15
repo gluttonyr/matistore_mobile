@@ -6,7 +6,6 @@ import api from '@/data_api/lib/api';
 import apiClient from '@/data_api/lib/axios';
 import { logError } from '@/data_api/lib/logger';
 import { CreateUserDto, LoginRequest, User } from '@/data_api/models/user.types';
-import { authStorage } from '@/storage/authStorage';
 
 // Types pour les réponses API
 interface ApiResponse<T> {
@@ -21,9 +20,7 @@ export const authService = {
    */
   login: async (credentials: LoginRequest): Promise<ApiResponse<any>> => {
     // try {
-      console.log('[authService] Login request:', credentials.email);
       const response = await api.post<any>('/auth/login', credentials);
-      console.log('[authService] Login response:', response);
       // console.log('[authService] Raw HTTP response:', response);
       
       // // Accès sécurisé à la réponse
@@ -120,20 +117,20 @@ export const authService = {
       throw error;
     }},
 
+  verifyAppleToken: async (identityToken: string): Promise<any> => {
+    const response = await api.post<any>('/auth/verify-apple-token', { identityToken });
+    return response.data;
+  },
+
   /**
    * Récupérer le profil courant
    */
   getProfile: async (): Promise<User> => {
     try {
-      const token = await authStorage.getToken();
-      console.log("le token est",token);
-      console.log('========== GET PROFILE ==========');
-      console.trace('getProfile appelé depuis :');
       const response = await api.get<any>('/users/profile');
-      console.log('[authService] getProfile response:', response);
       return response.data;
     } catch (error) {
-      logError('Get profile failed', { error });
+      logError('Get profile failed');
       throw error;
     }
   },

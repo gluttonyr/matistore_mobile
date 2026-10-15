@@ -163,7 +163,7 @@ export default function ProfilePage() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <LinearGradient
         colors={['rgba(125,255,42,0.07)', Colors.darkBg]}

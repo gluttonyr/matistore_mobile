@@ -5,8 +5,6 @@ import { logError } from './logger';
 
 const apiUrl = Constants.expoConfig?.extra?.apiUrl;
 
-console.log('API URL:', apiUrl);
-
 const apiClient = axios.create({
   baseURL: apiUrl,
   headers: {
@@ -22,12 +20,9 @@ apiClient.interceptors.request.use(
     try {
       const token = await authStorage.getToken();
       
-      console.log('TOKEN STORAGE:', token);
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
-      console.log('AUTH HEADER:', config.headers.Authorization);
-
       return config;
     } catch (error:any) {
       logError('Request interceptor error', error);

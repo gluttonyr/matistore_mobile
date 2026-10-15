@@ -6,6 +6,7 @@ import { banniereService } from '@/data_api/services/banniereService';
 import { discussionService } from '@/data_api/services/discussionService';
 import { statsService } from '@/data_api/services/statsService';
 import { useFileUrl } from '@/hooks/useFileUrl';
+import { usePresenceCount } from '@/hooks/usepresenceCount';
 import { goToTab } from '@/utils/tabNavigation';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
@@ -13,6 +14,7 @@ import {
   Activity,
   ArrowDownToLine,
   ArrowUpFromLine,
+  Bell,
   ChevronRight,
   Crown,
   Image as ImageIcon,
@@ -20,6 +22,7 @@ import {
   MessageSquare,
   Settings2,
   Shield,
+  ShieldCheck,
   Users,
   Zap,
 } from 'lucide-react-native';
@@ -109,19 +112,20 @@ export default function AdminDashboard() {
   const [unreadDiscussions, setUnreadDiscussions] = useState<Discussion[]>([]);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(-20)).current;
+  const onlineCount = usePresenceCount();
 
   useEffect(() => {
     banniereService
       .getAll()
       .then(setBanners)
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   useEffect(() => {
     statsService
       .getAdminDashboardStats()
       .then(setStats)
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Rechargé à chaque retour sur cet écran : après avoir ouvert une discussion,
@@ -132,7 +136,7 @@ export default function AdminDashboard() {
       discussionService
         .getUnreadForAdmin()
         .then(setUnreadDiscussions)
-        .catch(() => {});
+        .catch(() => { });
     }, [])
   );
 
@@ -196,19 +200,31 @@ export default function AdminDashboard() {
         contentContainerStyle={{ paddingBottom: 40 }}
       >
 
+        <View style={[styles.section, { marginTop: 4 }]}>
+          <TouchableOpacity
+            style={styles.configureBtn}
+            onPress={() => router.push('/admin_transactions' as any)}
+            activeOpacity={0.8}
+          >
+            <ShieldCheck color="#A78BFA" size={15} />
+            <Text style={styles.configureBtnText}>Transactions et capture automatique</Text>
+            <ChevronRight color="#A78BFA" size={15} />
+          </TouchableOpacity>
+        </View>
+
         {/* ── Users Stats ── */}
         <Animated.View
           style={[styles.section, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
         >
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Utilisateurs</Text>
-            <TouchableOpacity
+            {/* <TouchableOpacity
               style={styles.seeAll}
               onPress={() => router.push('/(admin)/users' as any)}
             >
               <Text style={styles.seeAllText}>Gérer</Text>
               <ChevronRight color="#A78BFA" size={15} />
-            </TouchableOpacity>
+            </TouchableOpacity> */}
           </View>
 
           {/* Main total card */}
@@ -234,7 +250,7 @@ export default function AdminDashboard() {
                   <View style={[styles.usersMiniDot, { backgroundColor: Colors.primaryGreen }]} />
                   <View>
                     <Text style={[styles.usersMiniNum, { color: Colors.primaryGreen }]}>
-                      {stats.usersOnline}
+                      {onlineCount}
                     </Text>
                     <Text style={styles.usersMiniLabel}>En ligne</Text>
                   </View>
@@ -258,7 +274,7 @@ export default function AdminDashboard() {
             <View style={[styles.usersChip, { borderColor: 'rgba(125,255,42,0.25)' }]}>
               <Zap color={Colors.primaryGreen} size={13} />
               <Text style={[styles.usersChipNum, { color: Colors.primaryGreen }]}>
-                {stats.usersOnline}
+                {onlineCount}
               </Text>
               <Text style={styles.usersChipLabel}>actifs maintenant</Text>
             </View>
@@ -359,6 +375,23 @@ export default function AdminDashboard() {
           </ScrollView>
         </Animated.View>
 
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={styles.pushNotificationCard}
+            onPress={() => router.push('/admin_notifications' as any)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.pushNotificationIcon}>
+              <Bell color="#A78BFA" size={19} />
+            </View>
+            <View style={styles.pushNotificationCopy}>
+              <Text style={styles.pushNotificationTitle}>Notifications push</Text>
+              <Text style={styles.pushNotificationSubtitle}>Envoyer un message à tous les utilisateurs</Text>
+            </View>
+            <ChevronRight color="#A78BFA" size={18} />
+          </TouchableOpacity>
+        </View>
+
         {/* ── Activité récente ── */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -408,7 +441,7 @@ export default function AdminDashboard() {
         </View>
 
         {/* ── Quick Nav ── */}
-        <View style={styles.section}>
+        {/* <View style={styles.section}>
           <Text style={styles.sectionTitle}>Navigation rapide</Text>
           <View style={styles.quickNavGrid}>
             {[
@@ -416,31 +449,31 @@ export default function AdminDashboard() {
                 label: 'Messages',
                 icon: <MessageCircle color="#38BDF8" size={20} />,
                 bg: 'rgba(56,189,248,0.1)',
-                route: '/(admin)/chats',
+                route: 'chats',
               },
               {
                 label: 'Forum',
                 icon: <MessageSquare color="#FB923C" size={20} />,
                 bg: 'rgba(251,146,60,0.1)',
-                route: '/(admin)/forum',
+                route: 'forum',
               },
               {
                 label: 'Dépôts',
                 icon: <ArrowDownToLine color={Colors.primaryGreen} size={20} />,
                 bg: 'rgba(125,255,42,0.1)',
-                route: '/(admin)/chats',
+                route: 'chats',
               },
               {
                 label: 'Retraits',
                 icon: <ArrowUpFromLine color="#F59E0B" size={20} />,
                 bg: 'rgba(245,158,11,0.1)',
-                route: '/(admin)/chats',
+                route: 'chats',
               },
             ].map((item) => (
               <TouchableOpacity
                 key={item.label}
                 style={[styles.quickNavCard, { backgroundColor: item.bg }]}
-                onPress={() => router.push(item.route as any)}
+                onPress={() => goToTab(item.route as any)}
                 activeOpacity={0.8}
               >
                 {item.icon}
@@ -448,7 +481,7 @@ export default function AdminDashboard() {
               </TouchableOpacity>
             ))}
           </View>
-        </View>
+        </View> */}
       </ScrollView>
     </View>
   );
@@ -654,6 +687,28 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(167,139,250,0.25)',
   },
   configureBtnText: { color: '#A78BFA', fontSize: 11, fontWeight: '700' },
+
+  pushNotificationCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    backgroundColor: Colors.cardBg,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(167,139,250,0.25)',
+  },
+  pushNotificationIcon: {
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: 'rgba(167,139,250,0.12)',
+  },
+  pushNotificationCopy: { flex: 1, gap: 3 },
+  pushNotificationTitle: { color: Colors.white, fontSize: 13, fontWeight: '800' },
+  pushNotificationSubtitle: { color: Colors.textSecondary, fontSize: 11 },
 
   // Activity
   liveIndicator: { flexDirection: 'row', alignItems: 'center', gap: 5 },

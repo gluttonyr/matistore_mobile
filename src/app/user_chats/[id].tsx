@@ -1,41 +1,74 @@
 import { ChatInputBar } from '@/components/ChatinputBar';
 import { ChatMessage } from '@/components/ChatMessage';
+import { DateSeparator } from '@/components/dateSeparator';
+import { HistoryLoader } from '@/components/historyLoader';
 import { ImagePreviewModal } from '@/components/ImagePreviewModel';
+import { ChatBackground } from '@/components/ChatBackground';
+
 import { Colors } from '@/constants/colors';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { useChat } from '@/hooks/useChat';
+import { useChatSections } from '@/hooks/useChatSection';
+
+import { useDiscussionPresence } from '@/hooks/useDiscussionPresence';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ChevronLeft, Phone, Video } from 'lucide-react-native';
+import { ChevronLeft } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
-  KeyboardAvoidingView,
   Platform,
+  RefreshControl,
+  SectionList,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-
-
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ChatDetailScreen() {
   const { id, name } = useLocalSearchParams<{ id: string; name: string }>();
-  const { messages, loading, sending, sendText, sendFile, sendSticker, currentUserId } = useChat(id);
+  const { messages, loading, sending, sendText, sendFile, sendSticker, currentUserId, deleteMessage,loadMoreHistory,
+    loadingMore,
+    hasMoreHistory, } = useChat(id);
 
   const [text, setText] = useState('');
   const [previewUri, setPreviewUri] = useState<string | null>(null);
-  const listRef = useRef<FlatList>(null);
+  const listRef = useRef<SectionList>(null);
   const audio = useAudioRecorder();
+  const adminPresent = useDiscussionPresence(id);
 
-  const scrollToBottom = useCallback(() => {
-    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 120);
-  }, []);
+  // Messages groupés par jour : [{ title: "Aujourd'hui", data: [...] }, ...]
+  const sections = useChatSections(messages);
 
-  useEffect(() => {
-    if (messages.length > 0) scrollToBottom();
-  }, [messages.length]);
+  const scrollToBottom = useCallback((animated = true) => {
+    setTimeout(() => {
+      if (!sections.length) return;
+      const lastSectionIndex = sections.length - 1;
+      const lastItemIndex = sections[lastSectionIndex].data.length - 1;
+      try {
+        listRef.current?.scrollToLocation({
+          sectionIndex: lastSectionIndex,
+          itemIndex: lastItemIndex,
+          animated,
+          viewPosition: 1,
+        });
+      } catch {
+        // liste pas encore mesurée / vide : on ignore silencieusement
+      }
+    }, 120);
+  }, [sections]);
+
+  const lastMessageIdRef = useRef<string | null>(null);
+useEffect(() => {
+  if (messages.length === 0) return;
+  const lastId = messages[messages.length - 1].trackingId;
+  if (lastId !== lastMessageIdRef.current) {
+    lastMessageIdRef.current = lastId;
+    scrollToBottom();
+  }
+}, [messages]);
 
   const handleSendText = () => {
     if (!text.trim()) return;
@@ -43,28 +76,27 @@ export default function ChatDetailScreen() {
     setText('');
     scrollToBottom();
   };
+  const insets = useSafeAreaInsets();
+
+
 
   return (
     <KeyboardAvoidingView
       style={st.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
     >
+      <ChatBackground variant="default" />
       {/* Header */}
       <View style={st.header}>
         <TouchableOpacity onPress={() => router.back()} style={st.backBtn}>
           <ChevronLeft color={Colors.white} size={24} />
         </TouchableOpacity>
         <View style={st.headerInfo}>
-          <Text style={st.headerName}>{name}</Text>
-          <Text style={st.headerStatus}>{loading ? 'Chargement...' : 'En ligne'}</Text>
-        </View>
-        <View style={st.headerActions}>
-          <TouchableOpacity style={st.headerActionBtn}>
-            <Phone color={Colors.textSecondary} size={20} />
-          </TouchableOpacity>
-          <TouchableOpacity style={st.headerActionBtn}>
-            <Video color={Colors.textSecondary} size={20} />
-          </TouchableOpacity>
+          <Text style={st.headerName} numberOfLines={1} ellipsizeMode="tail">
+            {name}
+          </Text>
+          {/* <Text style={st.headerStatus}>{loading ? '' : adminPresent ? 'En ligne' : 'Hors ligne'}</Text> */}
         </View>
       </View>
 
@@ -74,19 +106,32 @@ export default function ChatDetailScreen() {
           <ActivityIndicator color={Colors.primaryGreen} size="large" />
         </View>
       ) : (
-        <FlatList
+        <SectionList
           ref={listRef}
-          data={messages}
+          sections={sections}
           keyExtractor={(item) => item.trackingId}
           contentContainerStyle={st.msgList}
+          stickySectionHeadersEnabled
+          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+          refreshControl={
+    <RefreshControl
+      refreshing={loadingMore}
+      onRefresh={loadMoreHistory}
+      tintColor={Colors.primaryGreen}
+      colors={[Colors.primaryGreen]}
+      progressBackgroundColor={Colors.cardBg}
+    />
+  }
+  renderSectionHeader={({ section }) => <DateSeparator label={section.title} />}
+ 
           renderItem={({ item }) => (
             <ChatMessage
               item={item}
               currentUserId={currentUserId}
               onImagePress={setPreviewUri}
+              // onDelete={deleteMessage}
             />
           )}
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
           ListEmptyComponent={() => (
             <View style={st.emptyWrap}>
               <Text style={st.emptyText}>Aucun message. Commencez la conversation !</Text>

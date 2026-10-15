@@ -32,7 +32,7 @@ import {
   MessageCircle,
   Search
 } from 'lucide-react-native';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -87,6 +87,7 @@ function formatTime(isoDate?: string | null): string {
 }
 
 export default function ChatsScreen() {
+  const navigationInProgressRef = useRef(false);
   const [search, setSearch] = useState('');
   const [discussions, setDiscussions] = useState<Discussion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -113,6 +114,7 @@ export default function ChatsScreen() {
   // par ex. après avoir envoyé un message puis fait "retour" depuis une discussion.
   useFocusEffect(
     useCallback(() => {
+      navigationInProgressRef.current = false;
       fetchDiscussions();
     }, [fetchDiscussions])
   );
@@ -123,6 +125,8 @@ export default function ChatsScreen() {
   );
 
   const navigateToChat = (discussion: Discussion) => {
+    if (navigationInProgressRef.current) return;
+    navigationInProgressRef.current = true;
     if (discussion.type === DiscussionType.DEPOT_RETRAIT) {
       router.push({
         pathname: '/user_chats/deposit-withdrawal',

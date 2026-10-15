@@ -10,10 +10,15 @@ import { useAuth } from '@/hooks/useAuth';
 import { useFileUrl } from '@/hooks/useFileUrl';
 import { openAppLink } from '@/utils/appLink';
 import { goToTab } from '@/utils/tabNavigation';
+import { SocialLinks } from '@/components/SocialLinks';
+import { getLastSeenNotificationAt } from '@/storage/appNotificationSeen';
+import { notificationService } from '@/data_api/services/notificationService';
+import * as Notifications from 'expo-notifications';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
-import { ArrowDownToLine, ArrowUpFromLine, ChevronRight } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { ArrowDownToLine, ArrowUpFromLine, Bell, ChevronRight, ReceiptText } from 'lucide-react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { transactionService } from '@/data_api/services/transactionService';
 import {
   Animated, Dimensions, FlatList,
   Image,
@@ -72,6 +77,32 @@ export default function HomeScreen() {
   const [banners, setBanners] = useState<Banniere[]>([]);
   const [bannersLoaded, setBannersLoaded] = useState(false);
   const [depotRetraitId, setDepotRetraitId] = useState<string | null>(null);
+  const [depositsAvailable, setDepositsAvailable] = useState(false);
+  const [hasNewNotifications, setHasNewNotifications] = useState(false);
+
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    const refreshCaptureStatus = () => {
+      transactionService.getCaptureStatus()
+        .then((status) => { if (active) setDepositsAvailable(status.available); })
+        .catch(() => { if (active) setDepositsAvailable(false); });
+    };
+    refreshCaptureStatus();
+    if (user?.trackingId) {
+      const userId = user.trackingId;
+      notificationService.getMinePage({ limit: 1 }).then(async ({ items }) => {
+        const lastSeenAt = await getLastSeenNotificationAt(userId);
+        if (active) setHasNewNotifications(items.some((item) => new Date(item.createdAt).getTime() > lastSeenAt));
+      }).catch(() => {});
+    }
+    const timer = setInterval(refreshCaptureStatus, 30_000);
+    return () => { active = false; clearInterval(timer); };
+  }, [user?.trackingId]));
+
+  useEffect(() => {
+    const subscription = Notifications.addNotificationReceivedListener(() => setHasNewNotifications(true));
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }).start();
@@ -121,6 +152,7 @@ export default function HomeScreen() {
   const openBannerLink = (lien?: string | null) => openAppLink(lien);
 
   const openDeposit = () => {
+    if (!depositsAvailable) return;
     if (!depotRetraitId) return;
     router.push({
       pathname: '/user_chats/deposit-withdrawal',
@@ -143,10 +175,24 @@ export default function HomeScreen() {
         <LinearGradient colors={[Colors.secondaryBg, Colors.darkBg]} style={styles.header}>
           <View style={styles.headerLeft}>
             <MatiLogo size={36} showText={false} />
-            <View>
+            <View style={styles.headerNameWrap}>
               <Text style={styles.headerGreet}>Bonjour,</Text>
-              <Text style={styles.headerName}>{user?.prenom} {user?.nom}</Text>
+              <Text style={styles.headerName} numberOfLines={1} ellipsizeMode="tail">
+                {user?.prenom} {user?.nom}
+              </Text>
             </View>
+          </View>
+          <View style={styles.headerActions}>
+            <SocialLinks variant="toolbar" />
+            <TouchableOpacity
+              style={styles.notificationsButton}
+              onPress={() => router.push('/user_notifications' as any)}
+              accessibilityRole="button"
+              accessibilityLabel="Ouvrir les notifications"
+            >
+              <Bell color={Colors.white} size={21} />
+              {hasNewNotifications && <View style={styles.notificationDot} />}
+            </TouchableOpacity>
           </View>
         </LinearGradient>
 
@@ -208,7 +254,7 @@ export default function HomeScreen() {
           <View style={styles.quickActions}>
 
             {/* Dépôt */}
-            <TouchableOpacity style={styles.quickAction} activeOpacity={0.85} onPress={openDeposit}>
+            <TouchableOpacity style={[styles.quickAction, !depositsAvailable && { opacity: 0.45 }]} activeOpacity={0.85} onPress={openDeposit} disabled={!depositsAvailable}>
               <LinearGradient
                 colors={[Colors.primaryGreen, Colors.secondaryGreen]}
                 style={styles.quickActionGrad}
@@ -219,7 +265,7 @@ export default function HomeScreen() {
                   <ArrowDownToLine color="#000" size={26} strokeWidth={2.5} />
                 </View>
                 <Text style={[styles.quickActionLabel, { color: '#000' }]}>Dépôt</Text>
-                <Text style={[styles.quickActionSub, { color: 'rgba(0,0,0,0.55)' }]}>Recharger votre compte</Text>
+                <Text style={[styles.quickActionSub, { color: 'rgba(0,0,0,0.55)' }]}>{depositsAvailable ? 'Recharger votre compte' : 'Dépôts temporairement indisponibles'}</Text>
               </LinearGradient>
             </TouchableOpacity>
 
@@ -239,6 +285,22 @@ export default function HomeScreen() {
             </TouchableOpacity>
 
           </View>
+          <TouchableOpacity
+            style={styles.transactionsShortcut}
+            activeOpacity={0.8}
+            onPress={() => router.push('/user_transactions' as any)}
+            accessibilityRole="button"
+            accessibilityLabel="Ouvrir mes transactions et mon historique"
+          >
+            <View style={styles.transactionsShortcutIcon}>
+              <ReceiptText color={Colors.primaryGreen} size={21} />
+            </View>
+            <View style={styles.transactionsShortcutCopy}>
+              <Text style={styles.transactionsShortcutTitle}>Mes transactions</Text>
+              <Text style={styles.transactionsShortcutSubtitle}>Consulter mon historique et leur état</Text>
+            </View>
+            <ChevronRight color={Colors.textSecondary} size={20} />
+          </TouchableOpacity>
         </Animated.View>
 
         {/* Upcoming Events */}
@@ -284,7 +346,11 @@ const styles = StyleSheet.create({
     paddingTop: 56,
     paddingBottom: 16,
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 },
+  headerNameWrap: { flexShrink: 1, minWidth: 0 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+  notificationsButton: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.cardBg, borderWidth: 1, borderColor: Colors.border },
+  notificationDot: { position: 'absolute', top: 5, right: 5, width: 11, height: 11, borderRadius: 6, backgroundColor: '#FF453A', borderWidth: 1.5, borderColor: Colors.secondaryBg },
   headerGreet: { color: Colors.textSecondary, fontSize: 12 },
   headerName: { color: Colors.white, fontSize: 16, fontWeight: '800', letterSpacing: 1 },
 
@@ -337,6 +403,11 @@ const styles = StyleSheet.create({
   },
   quickActionLabel: { color: Colors.white, fontSize: 16, fontWeight: '800' },
   quickActionSub: { color: Colors.textSecondary, fontSize: 11, textAlign: 'center' },
+  transactionsShortcut: { marginTop: 12, minHeight: 64, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: Colors.secondaryBg, borderWidth: 1, borderColor: Colors.border },
+  transactionsShortcutIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(125,255,42,0.1)' },
+  transactionsShortcutCopy: { flex: 1, gap: 3 },
+  transactionsShortcutTitle: { color: Colors.white, fontSize: 14, fontWeight: '800' },
+  transactionsShortcutSubtitle: { color: Colors.textSecondary, fontSize: 11 },
 
   eventsScroll: { paddingRight: 20, gap: 12 },
   eventCard: {

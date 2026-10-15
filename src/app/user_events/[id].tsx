@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ChevronLeft, Calendar, MapPin, Users, Share2 } from 'lucide-react-native';
+import { ChevronLeft, MapPin, Calendar, Share2, Users } from 'lucide-react-native';
+import * as FileSystem from 'expo-file-system/legacy';
+import Share, { Social } from 'react-native-share';
 import { Colors } from '@/constants/colors';
 import { Categorie } from '@/data_api/models/categorie.types';
 import { Evenement } from '@/data_api/models/evenement.types';
@@ -31,6 +33,7 @@ export default function EventDetailScreen() {
   const [category, setCategory] = useState<Categorie | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [sharing, setSharing] = useState(false);
 
   const heroUri = useFileUrl('events', event?.coverImage);
 
@@ -49,6 +52,44 @@ export default function EventDetailScreen() {
       .catch((err) => setError(getApiErrorMessage(err)))
       .finally(() => setLoading(false));
   }, [id]);
+
+  /**
+   * Télécharge l'image de couverture en local (WhatsApp exige un fichier
+   * local, pas une URL http distante) puis ouvre WhatsApp avec l'image,
+   * le titre et la description. Il ne reste plus qu'à choisir le contact.
+   */
+  const handleShareWhatsApp = async () => {
+    if (!event) return;
+    setSharing(true);
+    try {
+      const message = `${event.titre}\n\n${event.description}`;
+      let localImageUri: string | undefined;
+
+      if (heroUri) {
+        const fileName = heroUri.split('/').pop() || `event_${event.trackingId}.jpg`;
+        const dest = `${FileSystem.cacheDirectory}${fileName}`;
+        const downloaded = await FileSystem.downloadAsync(heroUri, dest);
+        localImageUri = downloaded.uri;
+      }
+
+      await Share.shareSingle({
+        social: Social.Whatsapp,
+        message,
+        url: localImageUri, // image jointe (nécessite file:// local)
+        title: event.titre,
+        
+      });
+    } catch (err: any) {
+      // Si WhatsApp n'est pas installé ou refuse l'appel, on prévient l'utilisateur
+      if (err?.message?.includes('not installed') || err?.code === 'NOT_INSTALLED') {
+        Alert.alert('WhatsApp introuvable', "WhatsApp n'est pas installé sur cet appareil.");
+      } else {
+        Alert.alert('Erreur', "Impossible d'ouvrir WhatsApp pour le moment.");
+      }
+    } finally {
+      setSharing(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -83,8 +124,12 @@ export default function EventDetailScreen() {
           <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
             <ChevronLeft color={Colors.white} size={24} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.shareBtn}>
-            <Share2 color={Colors.white} size={20} />
+          <TouchableOpacity style={styles.shareBtn} onPress={handleShareWhatsApp} disabled={sharing}>
+            {sharing ? (
+              <ActivityIndicator color={Colors.white} size="small" />
+            ) : (
+              <Share2 color={Colors.white} size={20} />
+            )}
           </TouchableOpacity>
           <View style={styles.catBadge}>
             <Text style={styles.catText}>{category?.libelle ?? 'Sans catégorie'}</Text>
@@ -131,17 +176,12 @@ export default function EventDetailScreen() {
           </GlassCard>
 
           <GreenButton
-            title="Participer à l'événement"
-            onPress={() => {}}
-            size="lg"
-            style={styles.ctaBtn}
-          />
-          <GreenButton
             title="Partager avec un ami"
-            onPress={() => {}}
+            onPress={handleShareWhatsApp}
             size="lg"
             variant="outline"
             style={styles.shareOutlineBtn}
+            loading={sharing}
           />
         </View>
       </ScrollView>
@@ -199,6 +239,5 @@ const styles = StyleSheet.create({
   infoText: { color: Colors.white, fontSize: 14, fontWeight: '600' },
   infoDivider: { height: 1, backgroundColor: Colors.border },
   infoHighlight: { color: Colors.primaryGreen, fontSize: 14, fontWeight: '700' },
-  ctaBtn: { width: '100%' },
   shareOutlineBtn: { width: '100%' },
 });

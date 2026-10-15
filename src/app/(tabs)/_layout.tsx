@@ -16,7 +16,7 @@ import Badge from '@/components/ui/Badge';
 import { Colors } from '@/constants/colors';
 import { usePushNotificationRegistration } from '@/hooks/usePushNotificationRegistration';
 import { useForumHasNew } from '@/hooks/useForumHasNew';
-import { useUnreadChatsCount } from '@/hooks/useUnreadChatsCount';
+// import { useUnreadChatsCount } from '@/hooks/useUnreadChatsCount';
 import { registerTabNavigator } from '@/utils/tabNavigation';
 
 const TABS = [
@@ -51,22 +51,28 @@ function TabIcon({ icon, focused, badge = 0, dot = false }: TabIconProps) {
 export default function TabsLayout() {
   const pagerRef = useRef<PagerView>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set([0]));
+  const targetIndexRef = useRef(0);
   const insets = useSafeAreaInsets();
 
   usePushNotificationRegistration();
 
-  // Rafraîchis à chaque changement d'onglet : suffisant pour refléter l'état
-  // réel sans avoir besoin d'un événement socket dédié aux badges.
-  const { count: chatsUnread } = useUnreadChatsCount(activeIndex);
+  // const { count: chatsUnread } = useUnreadChatsCount(activeIndex);
   const { hasNew: forumHasNew } = useForumHasNew(activeIndex);
 
   const handleTabPress = useCallback((index: number) => {
+    if (targetIndexRef.current === index) return;
+    targetIndexRef.current = index;
+    setVisitedTabs((current) => new Set(current).add(index));
     pagerRef.current?.setPage(index);
   }, []);
 
   const handlePageSelected = useCallback(
     (e: { nativeEvent: { position: number } }) => {
-      setActiveIndex(e.nativeEvent.position);
+      const index = e.nativeEvent.position;
+      targetIndexRef.current = index;
+      setActiveIndex(index);
+      setVisitedTabs((current) => current.has(index) ? current : new Set(current).add(index));
     },
     [],
   );
@@ -93,9 +99,9 @@ export default function TabsLayout() {
         onPageSelected={handlePageSelected}
         overdrag={false}
       >
-        {TABS.map(({ key, Screen }) => (
+        {TABS.map(({ key, Screen }, index) => (
           <View key={key} style={styles.page}>
-            <Screen />
+            {visitedTabs.has(index) ? <Screen /> : null}
           </View>
         ))}
       </PagerView>
@@ -104,7 +110,7 @@ export default function TabsLayout() {
         {TABS.map(({ key, label, Icon }, index) => {
           const focused = activeIndex === index;
           const color = focused ? Colors.primaryGreen : Colors.textSecondary;
-          const badge = key === 'chats' ? chatsUnread : 0;
+          // const badge = key === 'chats' ? chatsUnread : 0;
           const dot = key === 'forum' && forumHasNew;
           return (
             <TouchableOpacity
@@ -118,7 +124,7 @@ export default function TabsLayout() {
             >
               <TabIcon
                 focused={focused}
-                badge={badge}
+                // badge={badge}
                 dot={dot}
                 icon={<Icon color={color} size={22} strokeWidth={focused ? 2.5 : 2} />}
               />

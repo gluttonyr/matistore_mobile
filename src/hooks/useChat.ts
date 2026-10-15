@@ -10,11 +10,6 @@ import { useAuth } from '@/hooks/useAuth';
 
 const ACK_TIMEOUT_MS = 10000;
 
-// Émet un événement socket et attend la confirmation (ack) du serveur, avec un
-// timeout : sans ça, si le serveur ne répond jamais, l'appelant resterait bloqué
-// indéfiniment (ex: "sending" qui ne redevient jamais false). Le serveur peut
-// aussi acquitter avec { success: false, error } (ex: action non autorisée) :
-// dans ce cas on rejette avec le message renvoyé plutôt que de résoudre.
 function emitWithAck<T>(socket: Socket, event: string, payload: unknown): Promise<T> {
     return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
@@ -34,15 +29,17 @@ function emitWithAck<T>(socket: Socket, event: string, payload: unknown): Promis
     });
 }
 
-export function useChat(discussionId: string) {
-    const { user, token } = useAuth(); // ✅ UNE SEULE source d’auth
+export function useChat(discussionId: string, initialLimit?: number) {
+    const { user, token } = useAuth();
 
     const [messages, setMessages] = useState<Message[]>([]);
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
-    // null tant qu'aucun événement de verrouillage n'a été reçu : l'appelant
-    // doit alors se fier à la valeur `active` obtenue via discussionService.
     const [discussionActive, setDiscussionActive] = useState<boolean | null>(null);
+
+    // ── Pagination historique (scroll vers le haut, façon WhatsApp) ──
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [hasMoreHistory, setHasMoreHistory] = useState(true);
 
     const socketRef = useRef(socketService.getSocket());
 
@@ -67,9 +64,13 @@ export function useChat(discussionId: string) {
 
         socket.emit('joinDiscussion', discussionId);
 
-        const handleNewMessage = (msg: Message) => appendMessage(msg);
+        const handleNewMessage = (msg: Message) => {
+            if (msg.discussionTrackingId !== discussionId) return;
+            appendMessage(msg);
+        };
 
         const handleUpdate = (updated: Message) => {
+            if (updated.discussionTrackingId !== discussionId) return;
             setMessages(prev =>
                 prev.map(m =>
                     m.trackingId === updated.trackingId ? updated : m
@@ -77,7 +78,8 @@ export function useChat(discussionId: string) {
             );
         };
 
-        const handleDelete = ({ messageId }: { messageId: string }) => {
+        const handleDelete = ({ messageId, discussionId: dId }: { messageId: string; discussionId?: string }) => {
+            if (dId && dId !== discussionId) return;
             setMessages(prev =>
                 prev.map(m =>
                     m.trackingId === messageId
@@ -87,12 +89,11 @@ export function useChat(discussionId: string) {
             );
         };
 
-        // Envoyé par le serveur quand l'autre participant rejoint la discussion
-        // (donc est en ligne et a la conversation ouverte) : ses messages non lus
-        // passent à "lu", ce qui fait apparaître la double coche côté expéditeur.
         const handleMessagesRead = (updatedMessages: Message[]) => {
+            const relevant = updatedMessages.filter(m => m.discussionTrackingId === discussionId);
+            if (relevant.length === 0) return;
             setMessages(prev =>
-                prev.map(m => updatedMessages.find(u => u.trackingId === m.trackingId) ?? m)
+                prev.map(m => relevant.find(u => u.trackingId === m.trackingId) ?? m)
             );
         };
 
@@ -106,7 +107,6 @@ export function useChat(discussionId: string) {
         socket.on('messagesRead', handleMessagesRead);
         socket.on('discussionLockChanged', handleLockChanged);
 
-        // cleanup propre
         return () => {
             socket.off('newMessage', handleNewMessage);
             socket.off('messageUpdated', handleUpdate);
@@ -118,12 +118,10 @@ export function useChat(discussionId: string) {
     }, [token, discussionId, appendMessage]);
 
     // =========================
-    // HISTORY LOAD
+    // HISTORY LOAD (initial)
     // =========================
     useEffect(() => {
         if (!discussionId) {
-            // Pas de discussion valide : rien à charger, mais il ne faut pas rester
-            // bloqué sur "loading" indéfiniment (l'écran tournerait sans jamais rien afficher).
             setMessages([]);
             setLoading(false);
             return;
@@ -132,7 +130,8 @@ export function useChat(discussionId: string) {
         const loadHistory = async () => {
             try {
                 setLoading(true);
-                const history = await messageService.getByDiscussion(discussionId);
+                setHasMoreHistory(true); // reset à chaque changement de discussion
+                const history = await messageService.getByDiscussion(discussionId, undefined, initialLimit);
                 setMessages(history);
             } catch (e) {
                 console.error('Failed to load messages:', e);
@@ -142,10 +141,70 @@ export function useChat(discussionId: string) {
         };
 
         loadHistory();
-    }, [discussionId]);
+    }, [discussionId, initialLimit]);
 
     // =========================
-    // SEND TEXT
+    // LOAD MORE (tranche précédente, sur scroll vers le haut)
+    // =========================
+   // useChat.ts — remplace uniquement loadMoreHistory par ceci
+
+const loadMoreHistory = useCallback(async () => {
+    if (loadingMore || !discussionId) return;
+
+    if (!hasMoreHistory) {
+        Toast.show({
+            type: 'info',
+            text1: 'Vous avez atteint le début de la conversation',
+            visibilityTime: 1500,
+        });
+        return;
+    }
+
+    setMessages(current => {
+        if (current.length === 0) return current;
+
+        const oldest = current[0];
+        const beforeDate = oldest.dateEnvoi ?? oldest.createdAt;
+
+        setLoadingMore(true);
+        messageService
+            .getByDiscussion(discussionId, beforeDate)
+            .then((older) => {
+                if (older.length === 0) {
+                    setHasMoreHistory(false);
+                    Toast.show({
+                        type: 'info',
+                        text1: 'Vous avez atteint le début de la conversation',
+                        visibilityTime: 1500,
+                    });
+                    return;
+                }
+                setMessages(prev => {
+                    const existingIds = new Set(prev.map(m => m.trackingId));
+                    const deduped = older.filter(m => !existingIds.has(m.trackingId));
+                    if (deduped.length === 0) {
+                        setHasMoreHistory(false);
+                        Toast.show({
+                            type: 'info',
+                            text1: 'Vous avez atteint le début de la conversation',
+                            visibilityTime: 1500,
+                        });
+                        return prev;
+                    }
+                    return [...deduped, ...prev];
+                });
+            })
+            .catch((e) => {
+                console.error('Load more history failed:', e);
+                Toast.show({ type: 'error', text1: 'Impossible de charger les messages précédents' });
+            })
+            .finally(() => setLoadingMore(false));
+
+        return current;
+    });
+}, [discussionId, loadingMore, hasMoreHistory]);
+    // =========================
+    // SEND TEXT / FILE / STICKER / MODÉRATION — inchangés
     // =========================
     const sendText = useCallback(
         async (text: string, statut?: DiscussionStatus) => {
@@ -163,10 +222,6 @@ export function useChat(discussionId: string) {
                     discussionStatut: statut,
                 };
 
-                // On attend une vraie confirmation (ack socket, ou réponse HTTP) avant
-                // de considérer l'envoi terminé, et on ajoute nous-mêmes le message reçu
-                // à la liste locale : on ne dépend plus uniquement de l'écho "newMessage"
-                // (qui pouvait arriver après que l'écran ait déjà changé de vue).
                 const created = socket?.connected
                     ? await emitWithAck<Message>(socket, 'sendMessage', payload)
                     : await messageService.send({
@@ -187,9 +242,6 @@ export function useChat(discussionId: string) {
         [discussionId, user, appendMessage]
     );
 
-    // =========================
-    // SEND FILE
-    // =========================
     const sendFile = useCallback(
         async (
             file: { uri: string; name: string; type: string },
@@ -232,9 +284,6 @@ export function useChat(discussionId: string) {
         [discussionId, user, appendMessage]
     );
 
-    // =========================
-    // SEND STICKER
-    // =========================
     const sendSticker = useCallback(
         async (stickerImage: string) => {
             if (!user) return;
@@ -243,8 +292,6 @@ export function useChat(discussionId: string) {
             try {
                 const socket = socketRef.current;
 
-                // Le contenu du message EST le nom de fichier du sticker (attribut `image`
-                // du sticker) : à l'affichage, on ira le chercher via useFileUrl('stickers', ...).
                 const payload = {
                     contenu: stickerImage,
                     discussionId,
@@ -272,9 +319,6 @@ export function useChat(discussionId: string) {
         [discussionId, user, appendMessage]
     );
 
-    // =========================
-    // DELETE / PIN / UNPIN (modération admin)
-    // =========================
     const deleteMessage = useCallback(async (messageId: string) => {
         const socket = socketRef.current;
         if (!socket?.connected) {
@@ -334,6 +378,9 @@ export function useChat(discussionId: string) {
     return {
         messages,
         loading,
+        loadingMore,
+        hasMoreHistory,
+        loadMoreHistory,
         sending,
         discussionActive,
         sendText,

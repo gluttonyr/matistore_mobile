@@ -1,8 +1,10 @@
 import { ConnectionErrorState } from '@/components/ui/ConnectionErrorState';
 import { Colors } from '@/constants/colors';
-import { Discussion, DiscussionStatus, DiscussionType } from '@/data_api/models/discussion.types';
+import { AdminDiscussionCategory, Discussion, DiscussionStatus, DiscussionType } from '@/data_api/models/discussion.types';
 import { getApiErrorMessage } from '@/data_api/lib/logger';
 import { discussionService } from '@/data_api/services/discussionService';
+import { socketService } from '@/data_api/services/socketService';
+import { useAuth } from '@/hooks/useAuth';
 import { router, useFocusEffect } from 'expo-router';
 import {
   AlertCircle,
@@ -11,14 +13,20 @@ import {
   ChevronRight,
   HeadphonesIcon,
   MailWarning,
+  Mail,
   MessageCircle,
   Search,
-  Shield
+  Shield,
+  Phone,
+  UserRound,
+  X,
 } from 'lucide-react-native';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Modal,
+  Pressable,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -33,6 +41,7 @@ import {
 // Le tri ne se base plus uniquement sur "type" : depot/retrait/support
 // se basent maintenant sur le statut de la discussion.
 type CategoryFilter = 'all' | 'unread' | 'depot' | 'retrait' | 'support';
+const DISCUSSION_PAGE_SIZE = 25;
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -80,7 +89,6 @@ const CATEGORIES: {
     },
   ];
 
-// - < 7 jours    -> nom du jour (Lundi, Mardi, ...)
 const TYPE_CONFIG: Record<
   DiscussionType,
   { icon: React.ReactNode; color: string; bg: string }
@@ -128,27 +136,8 @@ const STATUS_CONFIG: Record<
 
 // ⚠️ Ajuste ce champ si le nom exact dans ton modèle Discussion est différent
 // (ex: isRead, hasUnread, nbNonLu, etc.)
-function hasUnread(d: Discussion): boolean {
-  return ((d as any).unreadCount ?? 0) > 0;
-}
-
-// Détermine à quelle catégorie de tri appartient une discussion,
-// en se basant sur le statut (et non plus uniquement sur le type) :
-// - statut DEPOT   -> 'depot'
-// - statut RETRAIT -> 'retrait'
-// - statut AUTRE   -> 'support'
-// - type SUPPORT   -> 'support' (toujours support, même si un jour un statut différent lui est assigné)
-function matchesCategory(d: Discussion, cat: CategoryFilter): boolean {
-  switch (cat) {
-    case 'depot':
-      return d.statut === DiscussionStatus.DEPOT;
-    case 'retrait':
-      return d.statut === DiscussionStatus.RETRAIT;
-    case 'support':
-      return d.type === DiscussionType.SUPPORT || d.statut === DiscussionStatus.AUTRE;
-    default:
-      return false;
-  }
+function getUnreadCount(d: Discussion): number {
+  return (d as any).unreadCount ?? 0;
 }
 
 function capitalize(str: string): string {
@@ -196,52 +185,113 @@ function formatTime(isoDate?: string | null): string {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AdminChatsScreen() {
+  const navigationInProgressRef = useRef(false);
+  const { token } = useAuth();
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>('all');
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [discussions, setDiscussions] = useState<Discussion[]>([]);
+  const [profileDiscussion, setProfileDiscussion] = useState<Discussion | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [categoryCounts, setCategoryCounts] = useState<Record<CategoryFilter, number>>({
+    all: 0, unread: 0, depot: 0, retrait: 0, support: 0,
+  });
   const [error, setError] = useState('');
+  const requestIdRef = useRef(0);
+  const profileRequestIdRef = useRef(0);
+  const hasLoadedDataRef = useRef(false);
+  const listRef = useRef<FlatList<Discussion>>(null);
 
-  const fetchDiscussions = useCallback(async () => {
-    setError('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 350);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const fetchDiscussions = useCallback(async (requestedPage = 1, append = false, background = false) => {
+    const requestId = ++requestIdRef.current;
+    if (append) setLoadingMore(true);
+    else if (!background) setLoading(true);
+    if (!append) setError('');
     try {
-      const response = await discussionService.getAll();
-      setDiscussions(response);
+      const response = await discussionService.getAll({
+        page: requestedPage,
+        limit: DISCUSSION_PAGE_SIZE,
+        search: debouncedSearch,
+        category: activeCategory as AdminDiscussionCategory,
+      });
+      if (requestId !== requestIdRef.current) return;
+      hasLoadedDataRef.current = true;
+      setDiscussions((current) => {
+        if (!append) return response.items;
+        const byId = new Map(current.map((item) => [item.trackingId, item]));
+        response.items.forEach((item) => byId.set(item.trackingId, item));
+        return [...byId.values()].sort((a, b) =>
+          new Date(b.lastMessageAt ?? b.updatedAt).getTime() - new Date(a.lastMessageAt ?? a.updatedAt).getTime(),
+        );
+      });
+      setPage((current) => append ? Math.max(current, requestedPage) : requestedPage);
+      setHasMore(response.hasMore);
+      setCategoryCounts(response.counts);
     } catch (err) {
+      if (requestId !== requestIdRef.current) return;
       console.error('Failed to fetch discussions:', err);
-      setError(getApiErrorMessage(err));
+      if ((!append && !background) || !hasLoadedDataRef.current) setError(getApiErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
-  }, []);
+  }, [activeCategory, debouncedSearch]);
 
   // Recharge la liste (et donc le dernier message) à chaque retour sur cet écran.
   useFocusEffect(
     useCallback(() => {
-      fetchDiscussions();
-    }, [fetchDiscussions])
+      navigationInProgressRef.current = false;
+      void fetchDiscussions(1, false);
+      if (!token) return;
+      socketService.connect(token);
+      const socket = socketService.getSocket();
+      if (!socket) return;
+      const handleDiscussionUpdated = () => {
+        listRef.current?.scrollToOffset({ offset: 0, animated: true });
+        void fetchDiscussions(1, false, true);
+      };
+      socket.on('discussionUpdated', handleDiscussionUpdated);
+      return () => { socket.off('discussionUpdated', handleDiscussionUpdated); };
+    }, [fetchDiscussions, token])
   );
 
-  const filtered = discussions.filter((d) => {
-    const matchCat =
-      activeCategory === 'all' ||
-      (activeCategory === 'unread' ? hasUnread(d) : matchesCategory(d, activeCategory));
-    const matchSearch = d.titre.toLowerCase().includes(search.toLowerCase());
-    return matchCat && matchSearch;
-  });
-
-  const getCategoryCount = (cat: CategoryFilter) => {
-    if (cat === 'all') return discussions.length;
-    if (cat === 'unread') return discussions.filter(hasUnread).length;
-    return discussions.filter((d) => matchesCategory(d, cat)).length;
-  };
+  const getCategoryCount = (cat: CategoryFilter) => categoryCounts[cat];
 
   // Discussions en attente de traitement (dépôt ou retrait non résolu)
-  const pendingCount = discussions.filter(
-    (d) => d.statut === DiscussionStatus.DEPOT || d.statut === DiscussionStatus.RETRAIT
-  ).length;
+  const pendingCount = categoryCounts.depot + categoryCounts.retrait;
+
+  const openProfile = async (discussion: Discussion) => {
+    const requestId = ++profileRequestIdRef.current;
+    setProfileDiscussion(discussion);
+    setProfileLoading(true);
+    try {
+      const userProfile = await discussionService.getAdminUserProfile(discussion.trackingId);
+      if (requestId === profileRequestIdRef.current) {
+        setProfileDiscussion((current) => current?.trackingId === discussion.trackingId
+          ? { ...current, userProfile }
+          : current);
+      }
+    } catch {
+      if (requestId === profileRequestIdRef.current) setProfileDiscussion(null);
+    } finally {
+      if (requestId === profileRequestIdRef.current) setProfileLoading(false);
+    }
+  };
 
   const navigateToChat = (discussion: Discussion) => {
+    if (navigationInProgressRef.current) return;
+    navigationInProgressRef.current = true;
     // Il n'existe qu'un seul écran de détail admin (admin_chats/[id]) : il n'y a pas
     // de page dédiée "admin_chats/deposit-withdrawal" (cette route n'existait pas,
     // ce qui faisait planter/tourner indéfiniment le chargement pour les discussions
@@ -254,7 +304,7 @@ export default function AdminChatsScreen() {
 
     router.push({
       pathname: 'admin_chats/[id]',
-      params: { id: discussion.trackingId, name: discussion.titre, category },
+      params: { id: discussion.trackingId, name: discussion.username || discussion.titre, category },
     });
   };
 
@@ -351,13 +401,19 @@ export default function AdminChatsScreen() {
           <ActivityIndicator color="#A78BFA" size="large" />
         </View>
       ) : error ? (
-        <ConnectionErrorState onRetry={fetchDiscussions} fullscreen />
+        <ConnectionErrorState message={error} onRetry={fetchDiscussions} fullscreen />
       ) : (
         <FlatList
-          data={filtered}
+          ref={listRef}
+          data={discussions}
           keyExtractor={(item) => item.trackingId}
           contentContainerStyle={styles.listContent}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
+          onEndReached={() => {
+            if (hasMore && !loading && !loadingMore) void fetchDiscussions(page + 1, true);
+          }}
+          onEndReachedThreshold={0.35}
+          ListFooterComponent={loadingMore ? <ActivityIndicator color="#A78BFA" style={{ padding: 16 }} /> : null}
           ListEmptyComponent={() => (
             <View style={styles.emptyState}>
               <Text style={styles.emptyText}>Aucune conversation trouvée</Text>
@@ -366,6 +422,7 @@ export default function AdminChatsScreen() {
           renderItem={({ item }) => {
             const typeConf = TYPE_CONFIG[item.type];
             const statusConf = STATUS_CONFIG[item.statut];
+            const unreadCount = getUnreadCount(item);
 
             // Initiales depuis le titre
             const initials = item.username
@@ -378,13 +435,14 @@ export default function AdminChatsScreen() {
               : '';
 
             return (
-              <TouchableOpacity
-                style={styles.convItem}
-                onPress={() => navigateToChat(item)}
-                activeOpacity={0.75}
-              >
-                {/* Avatar */}
-                <View style={styles.avatarWrapper}>
+              <View style={styles.convItem}>
+                <TouchableOpacity
+                  style={styles.avatarWrapper}
+                  onPress={() => void openProfile(item)}
+                  activeOpacity={0.75}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Afficher le profil de ${item.username ?? 'cet utilisateur'}`}
+                >
                   <View
                     style={[
                       styles.avatar,
@@ -398,28 +456,40 @@ export default function AdminChatsScreen() {
                       {initials}
                     </Text>
                   </View>
-                  <View
-                    style={[styles.catDot, { backgroundColor: typeConf.color }]}
-                  >
-                    {typeConf.icon}
-                  </View>
-                </View>
+                </TouchableOpacity>
 
-                {/* Content */}
-                <View style={styles.convContent}>
+                <TouchableOpacity
+                  style={styles.convMain}
+                  onPress={() => navigateToChat(item)}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.convContent}>
                   <View style={styles.convTopRow}>
-                    <Text style={styles.convName} numberOfLines={1}>
-                      {item.username ?? 'Utilisateur inconnu'}
-                    </Text>
-                    <Text style={styles.convTime}>{formatTime(item.lastMessageAt)}</Text>
-                  </View>
+  <Text style={styles.convName} numberOfLines={1}>
+    {item.username ?? 'Utilisateur inconnu'}
+  </Text>
 
-                  <Text style={styles.convLastMsg} numberOfLines={1}>
-                    {item.lastMessageContent ?? 'Aucun message'}
-                  </Text>
+  <Text style={styles.convTime}>
+    {formatTime(item.lastMessageAt)}
+  </Text>
+</View>
+
+<View style={styles.lastMessageRow}>
+  <Text style={styles.convLastMsg} numberOfLines={1}>
+    {item.lastMessageContent ?? 'Aucun message'}
+  </Text>
+
+  {unreadCount > 0 && (
+    <View style={styles.unreadBadge}>
+      <Text style={styles.unreadBadgeText}>
+        {unreadCount > 99 ? '99+' : unreadCount}
+      </Text>
+    </View>
+  )}
+</View>
 
                   <View style={styles.convBottomRow}>
-                    {statusConf && (
+                    {/* {statusConf && (
                       <View
                         style={[styles.statusPill, { backgroundColor: statusConf.bg }]}
                       >
@@ -435,20 +505,102 @@ export default function AdminChatsScreen() {
                           {statusConf.label}
                         </Text>
                       </View>
-                    )}
+                    )} */}
                   </View>
-                </View>
+                  </View>
 
-                <ChevronRight
-                  color={Colors.textSecondary}
-                  size={16}
-                  style={{ opacity: 0.5 }}
-                />
-              </TouchableOpacity>
+                  <ChevronRight
+                    color={Colors.textSecondary}
+                    size={16}
+                    style={{ opacity: 0.5 }}
+                  />
+                </TouchableOpacity>
+              </View>
             );
           }}
         />
       )}
+
+      <Modal
+        visible={profileDiscussion !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { profileRequestIdRef.current += 1; setProfileLoading(false); setProfileDiscussion(null); }}
+      >
+        <View style={styles.profileOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => { profileRequestIdRef.current += 1; setProfileLoading(false); setProfileDiscussion(null); }} />
+          <View style={styles.profileCard}>
+            <View style={styles.profileHeader}>
+              <View style={styles.profileAvatar}>
+                <Text style={styles.profileAvatarText}>
+                  {(profileDiscussion?.userProfile
+                    ? `${profileDiscussion.userProfile.nom?.[0] ?? ''}${profileDiscussion.userProfile.prenom?.[0] ?? ''}`
+                    : profileDiscussion?.username?.slice(0, 2) ?? '??').toUpperCase()}
+                </Text>
+              </View>
+              <View style={styles.profileHeadingText}>
+                <Text style={styles.profileName}>
+                  {profileDiscussion?.userProfile
+                    ? `${profileDiscussion.userProfile.nom} ${profileDiscussion.userProfile.prenom}`.trim()
+                    : profileDiscussion?.username ?? 'Profil utilisateur'}
+                </Text>
+                <Text style={styles.profileSubtitle}>Profil utilisateur</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => { profileRequestIdRef.current += 1; setProfileLoading(false); setProfileDiscussion(null); }}
+                style={styles.profileClose}
+                accessibilityLabel="Fermer le profil"
+              >
+                <X color={Colors.textSecondary} size={20} />
+              </TouchableOpacity>
+            </View>
+
+            {profileLoading ? (
+              <ActivityIndicator color="#A78BFA" />
+            ) : profileDiscussion?.userProfile ? (
+              <View style={styles.profileDetails}>
+                <ProfileDetail icon={<UserRound color="#A78BFA" size={16} />} label="Nom d’utilisateur" value={`@${profileDiscussion.userProfile.username}`} />
+                <ProfileDetail icon={<Mail color="#A78BFA" size={16} />} label="Adresse e-mail" value={profileDiscussion.userProfile.email} />
+                <ProfileDetail icon={<Phone color="#A78BFA" size={16} />} label="Téléphone" value={profileDiscussion.userProfile.telephone || 'Non renseigné'} />
+                <View style={styles.profileDetailRow}>
+                  <View style={styles.profileDetailIcon}><Shield color="#A78BFA" size={16} /></View>
+                  <View style={styles.profileDetailText}>
+                    <Text style={styles.profileDetailLabel}>État du compte</Text>
+                    <Text style={[styles.profileDetailValue, { color: profileDiscussion.userProfile.active ? Colors.primaryGreen : '#F87171' }]}>
+                      {profileDiscussion.userProfile.active ? 'Actif' : 'Désactivé'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.profileDetailRow}>
+                  <View style={styles.profileDetailIcon}><AlertCircle color="#A78BFA" size={16} /></View>
+                  <View style={styles.profileDetailText}>
+                    <Text style={styles.profileDetailLabel}>Membre depuis</Text>
+                    <Text style={styles.profileDetailValue}>
+                      {profileDiscussion.userProfile.createdAt
+                        ? new Date(profileDiscussion.userProfile.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+                        : 'Date inconnue'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <Text style={styles.profileUnavailable}>Les détails du profil ne sont pas disponibles.</Text>
+            )}
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+function ProfileDetail({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <View style={styles.profileDetailRow}>
+      <View style={styles.profileDetailIcon}>{icon}</View>
+      <View style={styles.profileDetailText}>
+        <Text style={styles.profileDetailLabel}>{label}</Text>
+        <Text style={styles.profileDetailValue}>{value}</Text>
+      </View>
     </View>
   );
 }
@@ -595,6 +747,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     gap: 12,
   },
+  convMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
   avatarWrapper: { position: 'relative', width: 52, height: 52 },
   avatar: {
     width: 52,
@@ -605,18 +758,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: { fontSize: 16, fontWeight: '800', letterSpacing: 0.5 },
-  catDot: {
-    position: 'absolute',
-    bottom: -2,
-    right: -2,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: Colors.darkBg,
-  },
 
   convContent: { flex: 1, gap: 3 },
   convTopRow: {
@@ -625,8 +766,30 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   convName: { color: Colors.white, fontSize: 14, fontWeight: '700', flex: 1, marginRight: 8 },
+
+  // Colonne heure + badge non-lu (aligné à droite, comme WhatsApp)
+  convTimeCol: {
+    alignItems: 'flex-end',
+    gap: 5,
+    minWidth: 20,
+  },
   convTime: { color: Colors.textSecondary, fontSize: 11 },
-  convLastMsg: { color: Colors.textSecondary, fontSize: 12.5 },
+  unreadBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: Colors.primaryGreen,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
+  },
+  unreadBadgeText: {
+    color: '#0B1E00',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+
 
   convBottomRow: {
     flexDirection: 'row',
@@ -644,4 +807,67 @@ const styles = StyleSheet.create({
   },
   statusDot: { width: 5, height: 5, borderRadius: 2.5 },
   statusLabel: { fontSize: 10, fontWeight: '700' },
+  lastMessageRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  minWidth: 0,
+  gap: 8,
+},
+
+convLastMsg: {
+  flex: 1,
+  minWidth: 0,
+  color: Colors.textSecondary,
+  fontSize: 12.5,
+},
+
+  profileOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  profileCard: {
+    backgroundColor: Colors.secondaryBg,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 20,
+    gap: 20,
+  },
+  profileHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  profileAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(167,139,250,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(167,139,250,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileAvatarText: { color: '#A78BFA', fontWeight: '800', fontSize: 17 },
+  profileHeadingText: { flex: 1, gap: 3 },
+  profileName: { color: Colors.white, fontWeight: '800', fontSize: 16 },
+  profileSubtitle: { color: Colors.textSecondary, fontSize: 11 },
+  profileClose: { padding: 5 },
+  profileDetails: { gap: 14 },
+  profileDetailRow: { flexDirection: 'row', alignItems: 'center', gap: 11 },
+  profileDetailIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: 'rgba(167,139,250,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileDetailText: { flex: 1, gap: 2 },
+  profileDetailLabel: { color: Colors.textSecondary, fontSize: 10 },
+  profileDetailValue: { color: Colors.white, fontSize: 13, fontWeight: '600' },
+  profileUnavailable: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
 });

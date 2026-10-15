@@ -21,9 +21,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import EmojiPicker, { type EmojiType } from 'rn-emoji-keyboard';
 
 import { StickerPicker } from './StickerPicker';
 import { AudioHook } from '@/hooks/useAudioRecorder';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Props = {
   text: string;
@@ -49,35 +51,78 @@ export function ChatInputBar({
 }: Props) {
   const [showStickers, setShowStickers] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const fmtDuration = (s: number) =>
     `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
-  const handlePickImage = async () => {
-    setShowAttachMenu(false);
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.8,
-        allowsEditing: true,
-      });
-      if (result.canceled || !result.assets[0]) return;
-      const asset = result.assets[0];
-      const mimeType = asset.mimeType ?? 'image/jpeg';
-      const extension = mimeType.split('/')[1] ?? 'jpg';
-      await onSendFile(
-        {
-          uri: asset.uri,
-          name: asset.fileName ?? `img_${Date.now()}.${extension}`,
-          type: mimeType,
-        },
-        MessageType.IMAGE,
-      );
-    } catch (e) {
-      console.error('Image upload error:', e);
-      Alert.alert('Erreur', "Impossible de charger l'image.");
+const handlePickImage = () => {
+  setShowAttachMenu(false);
+  Alert.alert(
+    'Envoyer une image',
+    'Comment voulez-vous ajouter votre image ?',
+    [
+      { text: 'Prendre une photo', onPress: () => captureAndSendImage() },
+      { text: 'Choisir dans la galerie', onPress: () => pickAndSendImageFromGallery() },
+      { text: 'Annuler', style: 'cancel' },
+    ],
+  );
+};
+
+const captureAndSendImage = async () => {
+  try {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission refusée', "Veuillez autoriser l'accès à la caméra.");
+      return;
     }
-  };
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.8,
+      allowsEditing: true,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    const mimeType = asset.mimeType ?? 'image/jpeg';
+    const extension = mimeType.split('/')[1] ?? 'jpg';
+    await onSendFile(
+      {
+        uri: asset.uri,
+        name: asset.fileName ?? `img_${Date.now()}.${extension}`,
+        type: mimeType,
+      },
+      MessageType.IMAGE,
+    );
+  } catch (e) {
+    console.error('Camera capture error:', e);
+    Alert.alert('Erreur', "Impossible de prendre la photo.");
+  }
+};
+
+const pickAndSendImageFromGallery = async () => {
+  try {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+      allowsEditing: true,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    const mimeType = asset.mimeType ?? 'image/jpeg';
+    const extension = mimeType.split('/')[1] ?? 'jpg';
+    await onSendFile(
+      {
+        uri: asset.uri,
+        name: asset.fileName ?? `img_${Date.now()}.${extension}`,
+        type: mimeType,
+      },
+      MessageType.IMAGE,
+    );
+  } catch (e) {
+    console.error('Image upload error:', e);
+    Alert.alert('Erreur', "Impossible de charger l'image.");
+  }
+};
 
   const handleMicPress = async () => {
     if (!audio.isAvailable) {
@@ -102,6 +147,10 @@ export function ChatInputBar({
   const handleStickerSelect = (sticker: Sticker) => {
     if (!sticker.image) return;
     onSendSticker(sticker.image);
+  };
+
+  const handleEmojiSelected = (emojiObject: EmojiType) => {
+    onChangeText(text + emojiObject.emoji);
   };
 
   return (
@@ -143,10 +192,19 @@ export function ChatInputBar({
       )}
 
       {/* Input bar */}
-      <View style={st.inputContainer}>
+      <View style={[
+    st.inputContainer,
+    {
+      paddingBottom: Math.max(insets.bottom, 10),
+    },
+  ]}>
         <TouchableOpacity
           style={st.iconBtn}
-          onPress={() => { setShowAttachMenu((v) => !v); setShowStickers(false); }}
+          onPress={() => {
+            setShowAttachMenu((v) => !v);
+            setShowStickers(false);
+            setShowEmojiPicker(false);
+          }}
         >
           <Paperclip color={showAttachMenu ? Colors.primaryGreen : Colors.textSecondary} size={20} />
         </TouchableOpacity>
@@ -159,17 +217,24 @@ export function ChatInputBar({
           onChangeText={onChangeText}
           multiline
           maxLength={2000}
-          onFocus={() => { setShowAttachMenu(false); setShowStickers(false); }}
+          onFocus={() => {
+            setShowAttachMenu(false);
+            setShowStickers(false);
+            setShowEmojiPicker(false);
+          }}
         />
 
-        {allowStickers && (
-          <TouchableOpacity
-            style={st.iconBtn}
-            onPress={() => { setShowStickers((v) => !v); setShowAttachMenu(false); }}
-          >
-            <Smile color={showStickers ? Colors.primaryGreen : Colors.textSecondary} size={20} />
-          </TouchableOpacity>
-        )}
+        {/* Bouton emoji : indépendant des stickers, toujours affiché */}
+        <TouchableOpacity
+          style={st.iconBtn}
+          onPress={() => {
+            setShowAttachMenu(false);
+            setShowStickers(false);
+            setShowEmojiPicker(true);
+          }}
+        >
+          <Smile color={showEmojiPicker ? Colors.primaryGreen : Colors.textSecondary} size={20} />
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={[st.iconBtn, audio.isRecording && st.iconBtnRecording]}
@@ -195,7 +260,7 @@ export function ChatInputBar({
         )}
       </View>
 
-      {/* Sticker picker */}
+      {/* Sticker picker (réservé à allowStickers, accessible via le trombone) */}
       {allowStickers && (
         <StickerPicker
           visible={showStickers}
@@ -203,6 +268,13 @@ export function ChatInputBar({
           onClose={() => setShowStickers(false)}
         />
       )}
+
+      {/* Emoji picker style WhatsApp, toujours dispo */}
+      <EmojiPicker
+        onEmojiSelected={handleEmojiSelected}
+        open={showEmojiPicker}
+        onClose={() => setShowEmojiPicker(false)}
+      />
     </>
   );
 }
@@ -231,12 +303,16 @@ const st = StyleSheet.create({
   },
   attachLabel: { color: Colors.textSecondary, fontSize: 11, fontWeight: '600' },
 
-  inputContainer: {
-    flexDirection: 'row', alignItems: 'flex-end',
-    paddingHorizontal: 8, paddingVertical: 10,
-    backgroundColor: Colors.secondaryBg,
-    borderTopWidth: 1, borderTopColor: Colors.border, gap: 6,
-  },
+ inputContainer: {
+  flexDirection: 'row',
+  alignItems: 'flex-end',
+  paddingHorizontal: 8,
+  paddingTop: 10,
+  backgroundColor: Colors.secondaryBg,
+  borderTopWidth: 1,
+  borderTopColor: Colors.border,
+  gap: 6,
+},
   iconBtn: { padding: 9, justifyContent: 'center', alignItems: 'center' },
   iconBtnRecording: { opacity: 0.8 },
   textInput: {

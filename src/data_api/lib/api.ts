@@ -29,7 +29,24 @@ const api = {
       });
       return response.data;
     } catch (error) {
-      logError(`API Error: ${method.toUpperCase()} ${url}`, { error });
+      // Ne pas imprimer AxiosError : sa config peut contenir Authorization.
+      const apiError = error as {
+        code?: unknown;
+        message?: unknown;
+        response?: { status?: unknown; data?: { message?: unknown } };
+      };
+      const serverMessage = apiError?.response?.data?.message;
+      logError(`API Error: ${method.toUpperCase()} ${url}`, {
+        status: apiError?.response?.status,
+        code: apiError?.code,
+        message: Array.isArray(serverMessage)
+          ? serverMessage.filter((part): part is string => typeof part === 'string').join('; ')
+          : typeof serverMessage === 'string'
+            ? serverMessage
+            : typeof apiError?.message === 'string'
+              ? apiError.message
+              : undefined,
+      });
       throw error;
     }
   },

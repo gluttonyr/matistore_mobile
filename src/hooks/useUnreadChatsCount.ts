@@ -1,28 +1,33 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
 import { discussionService } from '@/data_api/services/discussionService';
 import { useAuth } from '@/hooks/useAuth';
 
-/**
- * Nombre de messages non lus (hors forum) pour l'utilisateur connecté — admin
- * ou non. `refreshKey` permet de forcer un nouveau fetch (ex: à chaque
- * changement d'onglet) sans dépendre d'un événement socket dédié.
- */
+const UNREAD_COUNT_QUERY_KEY = ['unreadChatsCount'] as const;
+const BADGE_STALE_TIME = 20_000;
+
+/** Nombre de messages non lus (hors forum) pour l'utilisateur connecté. */
 export function useUnreadChatsCount(refreshKey?: unknown) {
   const { token } = useAuth();
-  const [count, setCount] = useState(0);
-
-  const refresh = useCallback(() => {
-    if (!token) return;
-    discussionService.getUnreadCount()
-      .then(setCount)
-      .catch(() => {});
-  }, [token]);
+  const previousRefreshKey = useRef(refreshKey);
+  const query = useQuery({
+    queryKey: UNREAD_COUNT_QUERY_KEY,
+    queryFn: discussionService.getUnreadCount,
+    enabled: !!token,
+    staleTime: BADGE_STALE_TIME,
+    retry: false,
+  });
 
   useEffect(() => {
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refresh, refreshKey]);
+    if (Object.is(previousRefreshKey.current, refreshKey)) return;
+    previousRefreshKey.current = refreshKey;
+    if (token && query.isStale && !query.isFetching) void query.refetch();
+  }, [query.isFetching, query.isStale, query.refetch, refreshKey, token]);
 
-  return { count, refresh };
+  const refresh = useCallback(() => {
+    if (token) void query.refetch();
+  }, [query.refetch, token]);
+
+  return { count: query.data ?? 0, refresh };
 }

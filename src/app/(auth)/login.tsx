@@ -3,15 +3,18 @@ import MatiLogo from '@/components/ui/MatiLogo';
 import { Colors } from '@/constants/colors';
 import { authService } from '@/data_api/services/authService';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
+import { useAppleAuth } from '@/hooks/useAppleAuth';
 import { authStorage } from '@/storage/authStorage';
 import { useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { ChevronLeft, Eye, EyeOff, Lock, Mail } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
+import { AnyActionArg, useEffect, useRef, useState } from 'react';
+import { KeyboardAvoidingView, KeyboardProvider } from 'react-native-keyboard-controller';
 import {
-  Animated, KeyboardAvoidingView, Platform,
+  Animated, Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -26,10 +29,13 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const loginInProgressRef = useRef(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
   const queryClient = useQueryClient();
   const { signInWithGoogle, loading: googleLoading } = useGoogleAuth();
+  const { signInWithApple } = useAppleAuth();
+  
 
   useEffect(() => {
     Animated.parallel([
@@ -39,15 +45,17 @@ export default function LoginScreen() {
   }, []);
 
   const handleLogin = async () => {
+    if (loginInProgressRef.current) return;
     if (!email || !password) {
       setError('Veuillez remplir tous les champs.');
       return;
     }
+    loginInProgressRef.current = true;
     setError('');
     setLoading(true);
+    let navigationStarted = false;
     try {
       const res = await authService.login({ email, password });
-      console.log("LOGIN RESPONSE:", res.data.user, res.data.token);
       await authStorage.setToken(res.data.access_token);
       await authStorage.setUser(res.data.user);
 
@@ -58,25 +66,39 @@ export default function LoginScreen() {
         text2: 'Vous êtes maintenant connecté à votre compte.',
       });
       if (res.data.user.role === "ADMIN") {
+        navigationStarted = true;
         router.replace('/(admin)/home');
       } else {
+        navigationStarted = true;
         router.replace('/(tabs)/home');
       }
 
-    } catch (err) {
-      Toast.show({
-        type: 'error',
-        text1: 'Erreur',
-        text2: 'Email ou mot de passe incorrecte. Veuillez réessayer.',
-      });
-      setError('Email ou mot de passe incorrecte. Veuillez réessayer.');
+    } catch (err:any) {
+      const message =
+         err?.response?.data?.message ||
+         err?.message ||
+         'Une erreur est survenue lors de la création du compte.';
+     
+       setError(message);
+     
+       Toast.show({
+         type: 'error',
+         text1: 'Erreur',
+         text2: message,
+       });
     } finally {
-      setLoading(false);
+      if (!navigationStarted) {
+        loginInProgressRef.current = false;
+        setLoading(false);
+      }
     }
   };
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       <LinearGradient
         colors={['rgba(125,255,42,0.05)', Colors.darkBg]}
         style={StyleSheet.absoluteFill}
@@ -147,9 +169,9 @@ export default function LoginScreen() {
             </View>
           </View>
 
-          <TouchableOpacity style={styles.forgotBtn}>
+          {/* <TouchableOpacity style={styles.forgotBtn}>
             <Text style={styles.forgotText}>Mot de passe oublié ?</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> */}
 
           <GreenButton
             title="Se connecter"
@@ -180,6 +202,16 @@ export default function LoginScreen() {
               {googleLoading ? 'Connexion...' : 'Continuer avec Google'}
             </Text>
           </TouchableOpacity>
+
+          {Platform.OS === 'ios' && (
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+              cornerRadius={10}
+              style={styles.appleBtn}
+              onPress={signInWithApple}
+            />
+          )}
 
           <View style={styles.registerRow}>
             <Text style={styles.registerText}>Pas encore de compte ? </Text>
@@ -273,6 +305,7 @@ const styles = StyleSheet.create({
   },
   googleLetter: { color: '#EA4335', fontSize: 14, fontWeight: '800' },
   googleText: { color: Colors.white, fontSize: 15, fontWeight: '600' },
+  appleBtn: { width: '100%', height: 50, marginTop: 12 },
   registerRow: { flexDirection: 'row', justifyContent: 'center' },
   registerText: { color: Colors.textSecondary, fontSize: 14 },
   registerLink: { color: Colors.primaryGreen, fontSize: 14, fontWeight: '700' },

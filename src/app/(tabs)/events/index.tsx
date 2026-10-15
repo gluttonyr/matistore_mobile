@@ -217,10 +217,12 @@ const styles = StyleSheet.create({
   headerTitle: { color: Colors.white, fontSize: 24, fontWeight: '900', letterSpacing: 0.5 },
   headerSub: { color: Colors.textSecondary, fontSize: 13, marginTop: 2 },
   filtersWrapper: {
-    paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: Colors.border,
-    flexGrow: 0, flexShrink: 0, maxHeight: 60,
-  },
+  paddingVertical: 10,
+  borderBottomWidth: 1,
+  borderBottomColor: Colors.border,
+  flexGrow: 0,
+  flexShrink: 0,
+},
   filters: { paddingHorizontal: 20, gap: 8, alignItems: 'center' },
   filter: {
     flexDirection: 'row', alignItems: 'center', gap: 6,

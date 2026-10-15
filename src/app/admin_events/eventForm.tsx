@@ -170,7 +170,7 @@ export default function EventForm({ initialValues, onSubmit, onBack, mode }: Pro
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: Colors.darkBg }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       {/* Header */}
       <LinearGradient colors={[Colors.secondaryBg, Colors.darkBg]} style={styles.header}>
