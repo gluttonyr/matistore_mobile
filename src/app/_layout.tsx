@@ -1,5 +1,6 @@
 
 import { UpdateAvailableModal } from '@/components/updateAvailableNodal';
+import { WebFrame } from '@/components/WebFrame';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { useVersionCheck } from '@/hooks/useVersionChech';
 
@@ -26,6 +27,7 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      <WebFrame>
       <KeyboardProvider>
         <QueryClientProvider client={queryClientRef.current}>
             <Stack screenOptions={{ headerShown: false }}>
@@ -91,6 +93,7 @@ export default function RootLayout() {
           />
         </QueryClientProvider>
       </KeyboardProvider>
+      </WebFrame>
     </GestureHandlerRootView>
   );
 }
