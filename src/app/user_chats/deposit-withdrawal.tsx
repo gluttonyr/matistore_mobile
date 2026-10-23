@@ -63,7 +63,7 @@ import CountryPicker, {
   Country,
   CountryCode,
   DARK_THEME,
-} from 'react-native-country-picker-modal';
+} from '@/components/CountryPicker';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';

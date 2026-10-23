@@ -3,6 +3,8 @@ export default ({ config }) => ({
     name: "matistore",
     slug: "matistore",
     icon: "./assets/logo-ios.png",
+    // Web build = single-page app (no server pre-render, which would load native modules on the server).
+    web: { ...config.web, output: "single", favicon: "./assets/logo-ios.png" },
 
 
     android: {

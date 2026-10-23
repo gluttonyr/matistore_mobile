@@ -18,7 +18,7 @@ import CountryPicker, {
   Country,
   CountryCode,
   DARK_THEME,
-} from 'react-native-country-picker-modal';
+} from '@/components/CountryPicker';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Toast from 'react-native-toast-message';
 import { consumePendingAppleIdentityToken } from '@/hooks/useAppleAuth';
