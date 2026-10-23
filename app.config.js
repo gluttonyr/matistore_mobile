@@ -95,12 +95,13 @@ export default ({ config }) => ({
 
     extra: {
       ...config.extra,
-      // API_URL lets a local test target another backend, e.g. API_URL=http://localhost:3000 npx expo start --web
-      apiUrl: process.env.API_URL || "https://matistore.tech",
+      apiUrl: "https://matistore.tech",
       // Client Web (type "Application Web" dans Google Cloud Console) : utilisé
       // uniquement sur la plateforme web (Platform.OS === 'web').
       googleWebClientId:
         "75018713485-93ukdgcl61t6hglt00f2c8ck7h8iiifo.apps.googleusercontent.com",
+      // Services ID Apple (developer.apple.com) : connexion Apple sur le web uniquement.
+      appleServicesId: "tech.matistore.web",
       // Client Android (type "Android", lié au package + SHA-1 du keystore) :
       // pas référencé directement en JS — Google Play Services le retrouve tout
       // seul via le package + SHA-1 enregistrés côté Google Cloud Console.

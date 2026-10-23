@@ -11,6 +11,7 @@ import { Colors } from '@/constants/colors';
 import GreenButton from '@/components/ui/GreenButton';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 import { useAppleAuth } from '@/hooks/useAppleAuth';
+import AppleWebButton from '@/components/AppleWebButton';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
@@ -151,6 +152,7 @@ export default function RegisterStep1() {
               onPress={signInWithApple}
             />
           )}
+          {Platform.OS === 'web' && <AppleWebButton title="S'inscrire avec Apple" onPress={signInWithApple} />}
 
           <View style={styles.loginRow}>
             <Text style={styles.loginText}>Déjà un compte ? </Text>

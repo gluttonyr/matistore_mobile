@@ -4,6 +4,7 @@ import { Colors } from '@/constants/colors';
 import { authService } from '@/data_api/services/authService';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 import { useAppleAuth } from '@/hooks/useAppleAuth';
+import AppleWebButton from '@/components/AppleWebButton';
 import { authStorage } from '@/storage/authStorage';
 import { useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
@@ -212,6 +213,7 @@ export default function LoginScreen() {
               onPress={signInWithApple}
             />
           )}
+          {Platform.OS === 'web' && <AppleWebButton title="Continuer avec Apple" onPress={signInWithApple} />}
 
           <View style={styles.registerRow}>
             <Text style={styles.registerText}>Pas encore de compte ? </Text>
