@@ -19,6 +19,8 @@ import { useAdminNotificationCapture } from '@/hooks/useAdminNotificationCapture
 import { useForumHasNew } from '@/hooks/useForumHasNew';
 import { useUnreadChatsCount } from '@/hooks/useUnreadChatsCount';
 import { registerTabNavigator } from '@/utils/tabNavigation';
+import { useWideWeb } from '@/hooks/useWideWeb';
+import { webSidebarStyles } from '@/components/webSidebarStyles';
 
 const TABS = [
   { key: 'home',    label: 'Accueil',      Icon: Users,         Screen: HomeScreen },
@@ -55,6 +57,7 @@ export default function TabsLayout() {
   const [visitedTabs, setVisitedTabs] = useState(() => new Set([0]));
   const targetIndexRef = useRef(0);
   const insets = useSafeAreaInsets();
+  const wide = useWideWeb();
 
   usePushNotificationRegistration();
   useAdminNotificationCapture();
@@ -95,7 +98,7 @@ export default function TabsLayout() {
   }, []);
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, wide && webSidebarStyles.root]}>
       <PagerView
         ref={pagerRef}
         style={styles.pager}
@@ -110,7 +113,7 @@ export default function TabsLayout() {
         ))}
       </PagerView>
 
-      <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+      <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 8) }, wide && webSidebarStyles.tabBar]}>
         {TABS.map(({ key, label, Icon }, index) => {
           const focused = activeIndex === index;
           const color = focused ? Colors.primaryGreen : Colors.textSecondary;
@@ -119,7 +122,7 @@ export default function TabsLayout() {
           return (
             <TouchableOpacity
               key={key}
-              style={styles.tabItem}
+              style={[styles.tabItem, wide && webSidebarStyles.tabItem, wide && focused && webSidebarStyles.tabItemActive]}
               onPress={() => handleTabPress(index)}
               accessibilityRole="tab"
               accessibilityState={{ selected: focused }}
@@ -127,12 +130,12 @@ export default function TabsLayout() {
               activeOpacity={0.7}
             >
               <TabIcon
-                focused={focused}
+                focused={focused && !wide}
                 badge={badge}
                 dot={dot}
                 icon={<Icon color={color} size={22} strokeWidth={focused ? 2.5 : 2} />}
               />
-              <Text style={[styles.tabLabel, { color }]}>{label}</Text>
+              <Text style={[styles.tabLabel, { color }, wide && webSidebarStyles.tabLabel]}>{label}</Text>
             </TouchableOpacity>
           );
         })}
