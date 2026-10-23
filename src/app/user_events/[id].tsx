@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ChevronLeft, MapPin, Calendar, Share2, Users } from 'lucide-react-native';
 import * as FileSystem from 'expo-file-system/legacy';
-import Share, { Social } from 'react-native-share';
+import Share, { Social } from '@/components/Share';
 import { Colors } from '@/constants/colors';
 import { Categorie } from '@/data_api/models/categorie.types';
 import { Evenement } from '@/data_api/models/evenement.types';
@@ -65,7 +65,7 @@ export default function EventDetailScreen() {
       const message = `${event.titre}\n\n${event.description}`;
       let localImageUri: string | undefined;
 
-      if (heroUri) {
+      if (heroUri && Platform.OS !== 'web') {
         const fileName = heroUri.split('/').pop() || `event_${event.trackingId}.jpg`;
         const dest = `${FileSystem.cacheDirectory}${fileName}`;
         const downloaded = await FileSystem.downloadAsync(heroUri, dest);
