@@ -1,7 +1,7 @@
 import { Calendar, MessageCircle, User, Users } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import PagerView from 'react-native-pager-view';
+import PagerView from '@/components/PagerView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ─── Import screens par leur chemin exact (index.tsx dans chaque dossier) ─────
