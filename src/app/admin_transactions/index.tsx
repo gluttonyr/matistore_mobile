@@ -1,3 +1,5 @@
+import { useWideWeb } from '@/hooks/useWideWeb';
+import { webSidebarStyles } from '@/components/webSidebarStyles';
 import { Colors } from '@/constants/colors';
 import { InfoModal } from '@/components/infomodal';
 import type { AdminCaptureStatus, Transaction, TransactionStatus } from '@/data_api/models/transaction.types';
@@ -72,6 +74,7 @@ function formatDateTime(value?: string | null) {
 export default function AdminTransactionsScreen() {
   const { discussionId, clientName } = useLocalSearchParams<{ discussionId?: string; clientName?: string }>();
   const { token, logout } = useAuth();
+  const wide = useWideWeb();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -374,7 +377,7 @@ export default function AdminTransactionsScreen() {
         <FlatList
           data={transactions}
           keyExtractor={(item) => item.trackingId}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, wide && webSidebarStyles.readable]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(1); }} tintColor={Colors.primaryGreen} />}
           onEndReached={() => { if (hasMore && !loadingMore && !loading) void load(page + 1, true); }}
           onEndReachedThreshold={0.4}

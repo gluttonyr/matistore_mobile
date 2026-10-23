@@ -9,6 +9,7 @@ import Toast from 'react-native-toast-message';
 import { AudioPlayer } from './Audioplayer';
 import { ActionSheet, ActionSheetOption } from './actionSheet';
 import { ShimmerImage } from './shimerImage';
+import { useWideWeb } from '@/hooks/useWideWeb';
 
 type Props = {
   item: any;
@@ -63,6 +64,7 @@ export function ChatMessage({
   const [sheetOptions, setSheetOptions] = useState<ActionSheetOption[] | null>(null);
 
   const isMe = item.senderTrackingId === currentUserId;
+  const wide = useWideWeb();
   const time = item.dateEnvoi
     ? new Date(item.dateEnvoi).toLocaleTimeString('fr', { hour: '2-digit', minute: '2-digit' })
     : new Date(item.createdAt).toLocaleTimeString('fr', { hour: '2-digit', minute: '2-digit' });
@@ -151,7 +153,7 @@ export function ChatMessage({
   if (item.isDeleted) {
     // ── Message supprimé ──
     content = (
-      <View style={[st.msgRow, isMe ? st.msgRowMe : st.msgRowOther]}>
+      <View style={[st.msgRow, wide && st.msgRowWide, isMe ? st.msgRowMe : st.msgRowOther]}>
         <View style={[st.bubble, isMe ? st.bubbleMe : st.bubbleOther, { opacity: 0.6 }]}>
           <Text style={{ color: Colors.textSecondary, fontSize: 13, fontStyle: 'italic' }}>
             🚫 Message supprimé
@@ -166,7 +168,7 @@ export function ChatMessage({
       <TouchableOpacity
         activeOpacity={canLongPress ? 0.7 : 1}
         onLongPress={handleLongPress}
-        style={[st.msgRow, isMe ? st.msgRowMe : st.msgRowOther]}
+        style={[st.msgRow, wide && st.msgRowWide, isMe ? st.msgRowMe : st.msgRowOther]}
       >
         {pinBadge}
         <Image source={{ uri: stickerUri }} style={st.stickerMsg} resizeMode="contain" />
@@ -177,7 +179,7 @@ export function ChatMessage({
     // ── Image ──
     const imageUri = resolveFileUrl('messages', item.file ?? item.contenu);
     content = (
-      <View style={[st.msgRow, isMe ? st.msgRowMe : st.msgRowOther]}>
+      <View style={[st.msgRow, wide && st.msgRowWide, isMe ? st.msgRowMe : st.msgRowOther]}>
         {pinBadge}
         <TouchableOpacity
           activeOpacity={0.9}
@@ -209,7 +211,7 @@ export function ChatMessage({
       <TouchableOpacity
         activeOpacity={canLongPress ? 0.85 : 1}
         onLongPress={handleLongPress}
-        style={[st.msgRow, isMe ? st.msgRowMe : st.msgRowOther]}
+        style={[st.msgRow, wide && st.msgRowWide, isMe ? st.msgRowMe : st.msgRowOther]}
       >
         {pinBadge}
         <View style={[st.bubble, isMe ? st.bubbleMe : st.bubbleOther]}>
@@ -233,7 +235,7 @@ export function ChatMessage({
       <TouchableOpacity
         activeOpacity={canLongPress ? 0.85 : 1}
         onLongPress={handleLongPress}
-        style={[st.msgRow, isMe ? st.msgRowMe : st.msgRowOther]}
+        style={[st.msgRow, wide && st.msgRowWide, isMe ? st.msgRowMe : st.msgRowOther]}
       >
         {!isMe && item.sender?.username && (
           <Text style={st.senderName}>{item.sender.nom} {item.sender.prenom}</Text>
@@ -312,6 +314,9 @@ const st = StyleSheet.create({
     maxWidth: '80%',
     marginBottom: 4,
   },
+
+  // website on a computer: 80% of a wide chat is too long to read
+  msgRowWide: { maxWidth: 560 },
 
   msgRowMe: {
     alignSelf: 'flex-end',

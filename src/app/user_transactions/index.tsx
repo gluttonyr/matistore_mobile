@@ -1,3 +1,5 @@
+import { useWideWeb } from '@/hooks/useWideWeb';
+import { webSidebarStyles } from '@/components/webSidebarStyles';
 import { Colors } from '@/constants/colors';
 import type { Transaction, TransactionStatus } from '@/data_api/models/transaction.types';
 import { getApiErrorMessage } from '@/data_api/lib/logger';
@@ -94,6 +96,7 @@ const FLOW_STEPS = ['Demande', 'Vérification', 'Terminé'];
 
 export default function UserTransactionsScreen() {
   const { token } = useAuth();
+  const wide = useWideWeb();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -178,7 +181,7 @@ export default function UserTransactionsScreen() {
         <FlatList
           data={transactions}
           keyExtractor={(item) => item.trackingId}
-          contentContainerStyle={st.list}
+          contentContainerStyle={[st.list, wide && webSidebarStyles.readable]}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

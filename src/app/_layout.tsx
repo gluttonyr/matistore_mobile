@@ -34,10 +34,7 @@ export default function RootLayout() {
 
   const { visible: updateVisible, remindLater, dismiss } = useVersionCheck();
   const wide = useWideWeb();
-  // Website on a computer: screens opened over the tabs (chat, deposit, event...) stay a readable width, centered.
-  const pushedScreen = wide
-    ? { animation: 'slide_from_right' as const, contentStyle: { width: '100%' as const, maxWidth: 960, alignSelf: 'center' as const, overflow: 'hidden' as const } }
-    : { animation: 'slide_from_right' as const };
+  const pushedScreen = { animation: 'slide_from_right' as const };
 
   return (
     <GestureHandlerRootView style={wide ? { flex: 1, backgroundColor: Colors.darkBg } : { flex: 1 }}>

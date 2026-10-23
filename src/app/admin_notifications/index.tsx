@@ -1,3 +1,5 @@
+import { useWideWeb } from '@/hooks/useWideWeb';
+import { webSidebarStyles } from '@/components/webSidebarStyles';
 import { Colors } from '@/constants/colors';
 import { getApiErrorMessage } from '@/data_api/lib/logger';
 import { notificationService } from '@/data_api/services/notificationService';
@@ -21,6 +23,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function AdminNotificationsScreen() {
+  const wide = useWideWeb();
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [image, setImage] = useState<ImagePicker.ImagePickerAsset | null>(null);
@@ -125,7 +128,7 @@ export default function AdminNotificationsScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 24) + 24 }]} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[styles.content, wide && webSidebarStyles.readable, { paddingBottom: Math.max(insets.bottom, 24) + 24 }]} keyboardShouldPersistTaps="handled">
         <View style={styles.audienceCard}>
           <View style={styles.audienceIcon}>
             <Users color="#A78BFA" size={19} />

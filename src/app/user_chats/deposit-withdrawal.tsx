@@ -42,6 +42,9 @@ import {
   WifiOff,
 } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import { useWideWeb } from '@/hooks/useWideWeb';
+import { webSidebarStyles } from '@/components/webSidebarStyles';
 import {
   ActivityIndicator,
   Alert,
@@ -911,6 +914,7 @@ export default function DepositWithdrawalScreen() {
     );
   };
   const insets = useSafeAreaInsets();
+  const wide = useWideWeb();
 
   // ─── DEPOSIT ─────────────────────────────────────────────────────────────
   if (mode === 'deposit') {
@@ -958,7 +962,7 @@ export default function DepositWithdrawalScreen() {
           )}
 
           <ScrollView
-            contentContainerStyle={st.pageContent}
+            contentContainerStyle={[st.pageContent, wide && webSidebarStyles.readable]}
             keyboardShouldPersistTaps="handled"
           >
             {/* ── Étape 1 : Choix opérateur ──────────────────────────────── */}
@@ -1387,7 +1391,7 @@ export default function DepositWithdrawalScreen() {
         </View>
 
         <ScrollView
-          contentContainerStyle={st.pageContent}
+          contentContainerStyle={[st.pageContent, wide && webSidebarStyles.readable]}
           keyboardShouldPersistTaps="handled"
         >
           {withdrawalStep === 1 && (
@@ -1614,6 +1618,50 @@ export default function DepositWithdrawalScreen() {
 
 
 
+  // Deposit / withdrawal cards: under the chat on phones, in a side panel on a computer.
+  const actionCards = (
+    <View style={[st.actionRow, wide && st.actionColumn]}>
+      <TouchableOpacity
+        style={[st.actionCardDeposit, !depositCaptureAvailable && { opacity: 0.45 }]}
+        onPress={() => setMode('deposit')}
+        activeOpacity={0.85}
+        disabled={!depositCaptureAvailable}
+      >
+        <LinearGradient
+          colors={[Colors.primaryGreen, Colors.secondaryGreen]}
+          style={[st.actionCardInner, { flex: 1 }]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <View style={st.actionIconWrap}>
+            <ArrowDownToLine color="#000" size={22} strokeWidth={2.5} />
+          </View>
+          <Text style={st.actionCardTitle}>Dépôt</Text>
+          <Text style={st.actionCardSub}>{depositCaptureAvailable ? 'Recharger votre compte' : 'Dépôts temporairement indisponibles'}</Text>
+        </LinearGradient>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={st.actionCardWithdrawal}
+        onPress={() => setMode('withdrawal')}
+        activeOpacity={0.85}
+      >
+        <View style={st.actionCardInner}>
+          <View style={[st.actionIconWrap, st.actionIconWrapOutline]}>
+            <ArrowUpFromLine
+              color={Colors.primaryGreen}
+              size={22}
+              strokeWidth={2.5}
+            />
+          </View>
+          <Text style={[st.actionCardTitle, { color: Colors.primaryGreen }]}>
+            Retrait
+          </Text>
+          <Text style={st.actionCardSub}>Retirer vers Mobile Money</Text>
+        </View>
+      </TouchableOpacity>
+    </View>
+  );
+
   // ─── CHAT VIEW ────────────────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView
@@ -1644,103 +1692,79 @@ export default function DepositWithdrawalScreen() {
         </TouchableOpacity>
       </View>
 
-      {loading ? (
-        <View style={st.loader}>
-          <ActivityIndicator color={Colors.primaryGreen} size="large" />
-        </View>
-      ) : (
-        <SectionList
-          ref={listRef}
-          sections={sections}
-          keyExtractor={(item) => item.trackingId}
-          contentContainerStyle={st.msgList}
-          stickySectionHeadersEnabled
-          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-          refreshControl={
-            <RefreshControl
-              refreshing={loadingMore}
-              onRefresh={loadMoreHistory}
-              tintColor={Colors.primaryGreen}
-              colors={[Colors.primaryGreen]}
-              progressBackgroundColor={Colors.cardBg}
-            />
-          }
-          renderSectionHeader={({ section }) => <DateSeparator label={section.title} />}
+      <WideWrap on={wide} style={st.wideBody}>
+        <WideWrap on={wide} style={st.wideChat}>
+          {loading ? (
+            <View style={st.loader}>
+              <ActivityIndicator color={Colors.primaryGreen} size="large" />
+            </View>
+          ) : (
+            <SectionList
+              ref={listRef}
+              sections={sections}
+              keyExtractor={(item) => item.trackingId}
+              contentContainerStyle={st.msgList}
+              stickySectionHeadersEnabled
+              maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+              refreshControl={
+                <RefreshControl
+                  refreshing={loadingMore}
+                  onRefresh={loadMoreHistory}
+                  tintColor={Colors.primaryGreen}
+                  colors={[Colors.primaryGreen]}
+                  progressBackgroundColor={Colors.cardBg}
+                />
+              }
+              renderSectionHeader={({ section }) => <DateSeparator label={section.title} />}
 
-          renderItem={({ item }) => (
-            <ChatMessage
-              item={item}
-              currentUserId={currentUserId}
-              onImagePress={setPreviewUri}
-              // onDelete={deleteMessage}
+              renderItem={({ item }) => (
+                <ChatMessage
+                  item={item}
+                  currentUserId={currentUserId}
+                  onImagePress={setPreviewUri}
+                  // onDelete={deleteMessage}
+                />
+              )}
+              ListEmptyComponent={() => (
+                <View style={st.emptyWrap}>
+                  <Text style={st.emptyText}>
+                    Bonjour ! Vous pouvez effectuer vos dépôts et retraits ici.
+                    {'\n'}Choisissez une action ci-dessous.
+                  </Text>
+                </View>
+              )}
             />
           )}
-          ListEmptyComponent={() => (
-            <View style={st.emptyWrap}>
-              <Text style={st.emptyText}>
-                Bonjour ! Vous pouvez effectuer vos dépôts et retraits ici.
-                {'\n'}Choisissez une action ci-dessous.
-              </Text>
-            </View>
-          )}
-        />
-      )}
 
-      <View style={st.actionRow}>
-        <TouchableOpacity
-          style={[st.actionCardDeposit, !depositCaptureAvailable && { opacity: 0.45 }]}
-          onPress={() => setMode('deposit')}
-          activeOpacity={0.85}
-          disabled={!depositCaptureAvailable}
-        >
-          <LinearGradient
-            colors={[Colors.primaryGreen, Colors.secondaryGreen]}
-            style={[st.actionCardInner, { flex: 1 }]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <View style={st.actionIconWrap}>
-              <ArrowDownToLine color="#000" size={22} strokeWidth={2.5} />
-            </View>
-            <Text style={st.actionCardTitle}>Dépôt</Text>
-            <Text style={st.actionCardSub}>{depositCaptureAvailable ? 'Recharger votre compte' : 'Dépôts temporairement indisponibles'}</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={st.actionCardWithdrawal}
-          onPress={() => setMode('withdrawal')}
-          activeOpacity={0.85}
-        >
-          <View style={st.actionCardInner}>
-            <View style={[st.actionIconWrap, st.actionIconWrapOutline]}>
-              <ArrowUpFromLine
-                color={Colors.primaryGreen}
-                size={22}
-                strokeWidth={2.5}
-              />
-            </View>
-            <Text style={[st.actionCardTitle, { color: Colors.primaryGreen }]}>
-              Retrait
-            </Text>
-            <Text style={st.actionCardSub}>Retirer vers Mobile Money</Text>
+          {!wide && actionCards}
+
+          <ChatInputBar
+            text={text}
+            onChangeText={setText}
+            onSendText={handleSendText}
+            onSendFile={handleSendFile}
+            onSendSticker={handleSendSticker}
+            sending={sending}
+            audio={audio}
+            allowStickers={false}
+          />
+        </WideWrap>
+        {wide && (
+          <View style={st.widePanel}>
+            <Text style={st.widePanelTitle}>Que voulez-vous faire ?</Text>
+            {actionCards}
           </View>
-        </TouchableOpacity>
-      </View>
-
-      <ChatInputBar
-        text={text}
-        onChangeText={setText}
-        onSendText={handleSendText}
-        onSendFile={handleSendFile}
-        onSendSticker={handleSendSticker}
-        sending={sending}
-        audio={audio}
-        allowStickers={false}
-      />
+        )}
+      </WideWrap>
 
       <ImagePreviewModal uri={previewUri} onClose={() => setPreviewUri(null)} />
     </KeyboardAvoidingView>
   );
+}
+
+// Website on a computer: wraps children in a View; elsewhere renders them as is (the phone layout is unchanged).
+function WideWrap({ on, style, children }: { on: boolean; style: any; children: ReactNode }) {
+  return on ? <View style={style}>{children}</View> : <>{children}</>;
 }
 
 const st = StyleSheet.create({
@@ -2177,6 +2201,11 @@ const st = StyleSheet.create({
 
   msgList: { padding: 16, gap: 6, paddingBottom: 8 },
 
+  wideBody: { flex: 1, flexDirection: 'row' },
+  wideChat: { flex: 1 },
+  widePanel: { width: 340, padding: 20, gap: 16, borderLeftWidth: 1, borderLeftColor: Colors.border, backgroundColor: Colors.secondaryBg },
+  widePanelTitle: { color: Colors.white, fontSize: 16, fontWeight: '800' },
+  actionColumn: { flexDirection: 'column', paddingHorizontal: 0 },
   actionRow: {
     flexDirection: 'row',
     gap: 12,

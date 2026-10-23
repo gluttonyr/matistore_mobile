@@ -28,4 +28,6 @@ export const webSidebarStyles = StyleSheet.create({
   tabLabel: { fontSize: 15 },
   // Tab page content: a readable width, centered next to the sidebar.
   page: { width: '100%', maxWidth: 1100, alignSelf: 'center' },
+  // Lists and forms on full-width screens: a readable width, centered.
+  readable: { width: '100%', maxWidth: 900, alignSelf: 'center' },
 });

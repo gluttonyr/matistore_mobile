@@ -1,3 +1,5 @@
+import { useWideWeb } from '@/hooks/useWideWeb';
+import { webSidebarStyles } from '@/components/webSidebarStyles';
 import { ChatBackground } from '@/components/ChatBackground';
 import { ImagePreviewModal } from '@/components/ImagePreviewModel';
 import { DateSeparator } from '@/components/dateSeparator';
@@ -59,6 +61,7 @@ type NotificationSection = {
 
 export default function UserNotificationsScreen() {
   const { user } = useAuth();
+  const wide = useWideWeb();
   const { width: windowWidth } = useWindowDimensions();
   const [items, setItems] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -209,7 +212,7 @@ export default function UserNotificationsScreen() {
           }}
           keyExtractor={(item) => item.trackingId}
           renderItem={renderItem}
-          contentContainerStyle={[styles.list, items.length === 0 && styles.emptyList]}
+          contentContainerStyle={[styles.list, items.length === 0 && styles.emptyList, wide && webSidebarStyles.readable]}
           stickySectionHeadersEnabled={false}
           renderSectionHeader={({ section }) => <DateSeparator label={section.title} />}
           onEndReached={() => { if (hasMore && !loadingMore) void loadOlder(); }}

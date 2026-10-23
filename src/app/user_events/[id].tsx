@@ -6,6 +6,7 @@ import { ChevronLeft, MapPin, Calendar, Share2, Users } from 'lucide-react-nativ
 import * as FileSystem from 'expo-file-system/legacy';
 import Share, { Social } from '@/components/Share';
 import { Colors } from '@/constants/colors';
+import { useWideWeb } from '@/hooks/useWideWeb';
 import { Categorie } from '@/data_api/models/categorie.types';
 import { Evenement } from '@/data_api/models/evenement.types';
 import { getApiErrorMessage } from '@/data_api/lib/logger';
@@ -58,6 +59,8 @@ export default function EventDetailScreen() {
    * local, pas une URL http distante) puis ouvre WhatsApp avec l'image,
    * le titre et la description. Il ne reste plus qu'à choisir le contact.
    */
+  const wide = useWideWeb();
+
   const handleShareWhatsApp = async () => {
     if (!event) return;
     setSharing(true);
@@ -113,8 +116,9 @@ export default function EventDetailScreen() {
   return (
     <View style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={wide && styles.wideRow}>
         {/* Hero Image */}
-        <View style={styles.heroContainer}>
+        <View style={[styles.heroContainer, wide && styles.heroWide]}>
           {heroUri ? (
             <Image source={{ uri: heroUri }} style={styles.heroImage} />
           ) : (
@@ -137,7 +141,7 @@ export default function EventDetailScreen() {
         </View>
 
         {/* Content */}
-        <View style={styles.content}>
+        <View style={[styles.content, wide && styles.contentWide]}>
           <Text style={styles.title}>{event.titre}</Text>
 
           <View style={styles.metaRow}>
@@ -184,6 +188,7 @@ export default function EventDetailScreen() {
             loading={sharing}
           />
         </View>
+        </View>
       </ScrollView>
     </View>
   );
@@ -199,6 +204,10 @@ const styles = StyleSheet.create({
   },
   backBtnInlineText: { color: Colors.primaryGreen, fontWeight: '700' },
   heroContainer: { height: 320, position: 'relative' },
+  // website on a computer: picture on the left, details on the right
+  wideRow: { flexDirection: 'row', padding: 32, gap: 32, alignItems: 'flex-start' },
+  heroWide: { width: '45%', height: 480, borderRadius: 20, overflow: 'hidden' },
+  contentWide: { flex: 1, padding: 0, paddingTop: 8 },
   heroImage: { width: '100%', height: '100%', resizeMode: 'cover' },
   heroGrad: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 150 },
   backBtn: {
