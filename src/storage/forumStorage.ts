@@ -1,4 +1,4 @@
-import * as SecureStore from 'expo-secure-store';
+import * as SecureStore from '@/storage/secureStore';
 
 const FORUM_LAST_SEEN_KEY = 'forum_last_seen_at';
 
