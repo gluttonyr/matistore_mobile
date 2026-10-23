@@ -1,3 +1,4 @@
+import { UserAvatar } from '@/components/UserAvatar';
 import { ConnectionErrorState } from '@/components/ui/ConnectionErrorState';
 import { Colors } from '@/constants/colors';
 import { AdminDiscussionCategory, Discussion, DiscussionStatus, DiscussionType } from '@/data_api/models/discussion.types';
@@ -443,19 +444,25 @@ export default function AdminChatsScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={`Afficher le profil de ${item.username ?? 'cet utilisateur'}`}
                 >
-                  <View
-                    style={[
-                      styles.avatar,
-                      {
-                        backgroundColor: typeConf.bg,
-                        borderColor: typeConf.color + '40',
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.avatarText, { color: typeConf.color }]}>
-                      {initials}
-                    </Text>
-                  </View>
+                  <UserAvatar
+                    image={item.userProfile?.image}
+                    size={52}
+                    fallback={
+                      <View
+                        style={[
+                          styles.avatar,
+                          {
+                            backgroundColor: typeConf.bg,
+                            borderColor: typeConf.color + '40',
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.avatarText, { color: typeConf.color }]}>
+                          {initials}
+                        </Text>
+                      </View>
+                    }
+                  />
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -531,13 +538,19 @@ export default function AdminChatsScreen() {
           <Pressable style={StyleSheet.absoluteFill} onPress={() => { profileRequestIdRef.current += 1; setProfileLoading(false); setProfileDiscussion(null); }} />
           <View style={styles.profileCard}>
             <View style={styles.profileHeader}>
-              <View style={styles.profileAvatar}>
-                <Text style={styles.profileAvatarText}>
-                  {(profileDiscussion?.userProfile
-                    ? `${profileDiscussion.userProfile.nom?.[0] ?? ''}${profileDiscussion.userProfile.prenom?.[0] ?? ''}`
-                    : profileDiscussion?.username?.slice(0, 2) ?? '??').toUpperCase()}
-                </Text>
-              </View>
+              <UserAvatar
+                image={profileDiscussion?.userProfile?.image}
+                size={50}
+                fallback={
+                  <View style={styles.profileAvatar}>
+                    <Text style={styles.profileAvatarText}>
+                      {(profileDiscussion?.userProfile
+                        ? `${profileDiscussion.userProfile.nom?.[0] ?? ''}${profileDiscussion.userProfile.prenom?.[0] ?? ''}`
+                        : profileDiscussion?.username?.slice(0, 2) ?? '??').toUpperCase()}
+                    </Text>
+                  </View>
+                }
+              />
               <View style={styles.profileHeadingText}>
                 <Text style={styles.profileName}>
                   {profileDiscussion?.userProfile

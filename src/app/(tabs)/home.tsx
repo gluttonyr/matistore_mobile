@@ -1,3 +1,4 @@
+import { UserAvatar } from '@/components/UserAvatar';
 import MatiLogo from '@/components/ui/MatiLogo';
 import { Colors } from '@/constants/colors';
 import { Banniere } from '@/data_api/models/banniere.types';
@@ -174,7 +175,7 @@ export default function HomeScreen() {
         {/* Header */}
         <LinearGradient colors={[Colors.secondaryBg, Colors.darkBg]} style={styles.header}>
           <View style={styles.headerLeft}>
-            <MatiLogo size={36} showText={false} />
+            <UserAvatar image={user?.image} size={36} fallback={<MatiLogo size={36} showText={false} />} />
             <View style={styles.headerNameWrap}>
               <Text style={styles.headerGreet}>Bonjour,</Text>
               <Text style={styles.headerName} numberOfLines={1} ellipsizeMode="tail">

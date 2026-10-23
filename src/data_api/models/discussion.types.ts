@@ -19,6 +19,7 @@ export interface Discussion {
     username: string;
     email: string;
     telephone?: string | null;
+    image?: string | null;
     active: boolean;
     createdAt: string;
   };
