@@ -155,7 +155,7 @@ export default function SplashScreen() {
   useEffect(() => {
     if (!animationDone || !authReady) return;
     if (token && user) {
-      router.replace(user.role === UserRole.ADMIN ? '/(admin)/home' : '/(tabs)/home');
+      router.replace(user.role === UserRole.ADMIN ? '/(admin)/admin-home' : '/(tabs)/home');
     } else {
       router.replace('/(auth)/welcome');
     }

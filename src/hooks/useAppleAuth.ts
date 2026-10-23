@@ -37,7 +37,7 @@ export function useAppleAuth() {
         await authStorage.setUser(result.user);
         queryClient.setQueryData(['user'], result.user);
         Toast.show({ type: 'success', text1: 'Connexion réussie', text2: 'Vous êtes connecté avec Apple.' });
-        router.replace(result.user?.role === 'ADMIN' ? '/(admin)/home' : '/(tabs)/home');
+        router.replace(result.user?.role === 'ADMIN' ? '/(admin)/admin-home' : '/(tabs)/home');
         return;
       }
 

@@ -138,10 +138,10 @@ export function usePushNotificationRegistration(): void {
           });
         }
       } else if (data.type === 'ADMIN_BROADCAST') {
-        if (user?.role === UserRole.ADMIN) router.replace('/(admin)/home');
+        if (user?.role === UserRole.ADMIN) router.replace('/(admin)/admin-home');
         else router.push('/user_notifications');
       } else {
-        router.replace(user?.role === UserRole.ADMIN ? '/(admin)/home' : '/(tabs)/home');
+        router.replace(user?.role === UserRole.ADMIN ? '/(admin)/admin-home' : '/(tabs)/home');
       }
 
       Notifications.clearLastNotificationResponse();

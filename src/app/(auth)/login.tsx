@@ -67,7 +67,7 @@ export default function LoginScreen() {
       });
       if (res.data.user.role === "ADMIN") {
         navigationStarted = true;
-        router.replace('/(admin)/home');
+        router.replace('/(admin)/admin-home');
       } else {
         navigationStarted = true;
         router.replace('/(tabs)/home');

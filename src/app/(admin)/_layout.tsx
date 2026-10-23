@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ChatsScreen from './chats/index'; // ← dossier chats/index.tsx
 import EventsScreen from './events'; // ← events.tsx simple
 import ForumScreen from './forum';
-import HomeScreen from './home';
+import HomeScreen from './admin-home';
 import ProfileScreen from './profile';
 // ─────────────────────────────────────────────────────────────────────────────
 
