@@ -13,6 +13,7 @@ import ProfileScreen from './profile';
 // ─────────────────────────────────────────────────────────────────────────────
 
 import Badge from '@/components/ui/Badge';
+import MatiLogo from '@/components/ui/MatiLogo';
 import { Colors } from '@/constants/colors';
 import { usePushNotificationRegistration } from '@/hooks/usePushNotificationRegistration';
 import { useAdminNotificationCapture } from '@/hooks/useAdminNotificationCapture';
@@ -114,6 +115,11 @@ export default function TabsLayout() {
       </PagerView>
 
       <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 8) }, wide && webSidebarStyles.tabBar]}>
+        {wide && (
+          <View style={webSidebarStyles.brand}>
+            <MatiLogo size={90} showText />
+          </View>
+        )}
         {TABS.map(({ key, label, Icon }, index) => {
           const focused = activeIndex === index;
           const color = focused ? Colors.primaryGreen : Colors.textSecondary;
@@ -133,7 +139,7 @@ export default function TabsLayout() {
                 focused={focused && !wide}
                 badge={badge}
                 dot={dot}
-                icon={<Icon color={color} size={22} strokeWidth={focused ? 2.5 : 2} />}
+                icon={<Icon color={color} size={wide ? 24 : 22} strokeWidth={focused ? 2.5 : 2} />}
               />
               <Text style={[styles.tabLabel, { color }, wide && webSidebarStyles.tabLabel]}>{label}</Text>
             </TouchableOpacity>
