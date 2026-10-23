@@ -5,6 +5,7 @@ import { getApiErrorMessage, logError } from '@/data_api/lib/logger';
 import { categorieService } from '@/data_api/services/categorieService';
 import { evenementService } from '@/data_api/services/evenementService';
 import { useFileUrl } from '@/hooks/useFileUrl';
+import { useWideWeb } from '@/hooks/useWideWeb';
 import { isEventExpired } from '@/utils/eventDate';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
@@ -34,6 +35,7 @@ export default function EventsScreen() {
   const [categories, setCategories] = useState<Categorie[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const wide = useWideWeb();
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -147,6 +149,10 @@ export default function EventsScreen() {
         </View>
       ) : (
         <FlatList
+          // website on a computer: cards in a 3-column grid (key forces a remount when the column count changes)
+          key={wide ? 'grid' : 'list'}
+          numColumns={wide ? 3 : 1}
+          columnWrapperStyle={wide ? styles.gridRow : undefined}
           data={filtered}
           keyExtractor={(item) => item.trackingId}
           contentContainerStyle={styles.list}
@@ -162,7 +168,7 @@ export default function EventsScreen() {
             const expired = isEventExpired(item.dateFin);
             return (
               <TouchableOpacity
-                style={[styles.card, expired && styles.cardExpired]}
+                style={[styles.card, wide && styles.cardGrid, expired && styles.cardExpired]}
                 onPress={() => router.push({ pathname: '/user_events/[id]', params: { id: item.trackingId } })}
                 activeOpacity={0.85}
               >
@@ -259,6 +265,8 @@ const styles = StyleSheet.create({
     borderRadius: 20, overflow: 'hidden',
     backgroundColor: Colors.cardBg, borderWidth: 1, borderColor: Colors.border,
   },
+  gridRow: { gap: 20 },
+  cardGrid: { width: '31.5%' },
   cardExpired: { borderColor: 'rgba(255,77,77,0.3)', opacity: 0.8 },
   cardImage: { width: '100%', height: 180, resizeMode: 'cover' },
   cardImageExpired: { opacity: 0.45 },
