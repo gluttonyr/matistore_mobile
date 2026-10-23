@@ -95,7 +95,8 @@ export default ({ config }) => ({
 
     extra: {
       ...config.extra,
-      apiUrl: "https://matistore.tech",
+      // API_URL lets a local test target another backend, e.g. API_URL=http://localhost:3000 npx expo start --web
+      apiUrl: process.env.API_URL || "https://matistore.tech",
       // Client Web (type "Application Web" dans Google Cloud Console) : utilisé
       // uniquement sur la plateforme web (Platform.OS === 'web').
       googleWebClientId:
