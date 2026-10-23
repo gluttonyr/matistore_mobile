@@ -1270,11 +1270,15 @@ export default function DepositWithdrawalScreen() {
                     {buildUssdCode(currentOperator, depositNumero, rawAmount)}
                   </Text>
                   <Text style={st.codeInstructions}>
-                    {Platform.OS === 'ios'
+                    {Platform.OS === 'web'
+                      ? 'Copiez ce code, puis composez-le sur votre téléphone avec le numéro indiqué. Nous vérifierons la réception de votre paiement.'
+                      : Platform.OS === 'ios'
                       ? 'Téléphone va s’ouvrir et le code est copié. Si le code n’apparaît pas, collez-le dans Téléphone avant de composer.'
                       : 'Nous lancerons le code et vérifierons la réception de votre paiement. Vous pouvez aussi le copier pour le composer sur un autre téléphone.'}
                   </Text>
                 </View>
+                {/* A browser can't dial USSD: on web the client copies the code and dials it on the phone. */}
+                {Platform.OS !== 'web' && (
                 <GreenButton
                   title={depositPaymentAlreadyReceived
                     ? 'Paiement déjà reçu'
@@ -1285,6 +1289,7 @@ export default function DepositWithdrawalScreen() {
                   disabled={creatingTransaction || depositPaymentAlreadyReceived}
                   style={st.pageBtn}
                 />
+                )}
                 <TouchableOpacity
                   style={[st.copyDepositCodeBtn, (creatingTransaction || depositPaymentAlreadyReceived) && st.copyDepositCodeBtnDisabled]}
                   onPress={() => void copyDepositCode()}
