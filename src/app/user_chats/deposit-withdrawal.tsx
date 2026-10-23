@@ -898,6 +898,11 @@ export default function DepositWithdrawalScreen() {
   // ── Ouvrir le composeur USSD ─────────────────────────────────────────────
   // ── Ouvrir 1xBet ────────────────────────────────────────────────────────
   const open1xBet = async () => {
+    // A browser cannot open the 1xBet app: open the 1xBet website in a new tab instead.
+    if (Platform.OS === 'web') {
+      window.open('https://1xbet.com', '_blank');
+      return;
+    }
     const appSchemes = ['xbet://open', 'xbet://openapp'];
     for (const scheme of appSchemes) {
       try {

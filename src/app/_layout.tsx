@@ -1,5 +1,6 @@
 
 import '@/components/hideScrollbars';
+import '@/components/webAlert';
 import { UpdateAvailableModal } from '@/components/updateAvailableNodal';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { useVersionCheck } from '@/hooks/useVersionChech';
