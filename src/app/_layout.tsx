@@ -1,4 +1,5 @@
 
+import '@/components/completeAuthPopup';
 import '@/components/hideScrollbars';
 import '@/components/webAlert';
 import { UpdateAvailableModal } from '@/components/updateAvailableNodal';

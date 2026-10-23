@@ -4,12 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import * as Google from 'expo-auth-session/providers/google';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import Toast from 'react-native-toast-message';
-
-// Closes the Google popup and hands its result back to this page.
-WebBrowser.maybeCompleteAuthSession();
 
 // Web version of useGoogleAuth: @react-native-google-signin has no free web support, so the ID token comes
 // from Google's web popup. What happens with the token mirrors useGoogleAuth.ts (same backend route).
