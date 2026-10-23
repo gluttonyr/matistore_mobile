@@ -1729,7 +1729,7 @@ export default function DepositWithdrawalScreen() {
                 <View style={st.emptyWrap}>
                   <Text style={st.emptyText}>
                     Bonjour ! Vous pouvez effectuer vos dépôts et retraits ici.
-                    {'\n'}Choisissez une action ci-dessous.
+                    {'\n'}{wide ? 'Choisissez une action à gauche.' : 'Choisissez une action ci-dessous.'}
                   </Text>
                 </View>
               )}
@@ -1761,7 +1761,7 @@ export default function DepositWithdrawalScreen() {
     </KeyboardAvoidingView>
   );
 }
-
+
 // Website on a computer: wraps children in a View; elsewhere renders them as is (the phone layout is unchanged).
 function WideWrap({ on, style, children }: { on: boolean; style: any; children: ReactNode }) {
   return on ? <View style={style}>{children}</View> : <>{children}</>;
@@ -2201,9 +2201,10 @@ const st = StyleSheet.create({
 
   msgList: { padding: 16, gap: 6, paddingBottom: 8 },
 
-  wideBody: { flex: 1, flexDirection: 'row' },
+  // panel rendered after the chat, shown on the left
+  wideBody: { flex: 1, flexDirection: 'row-reverse' },
   wideChat: { flex: 1 },
-  widePanel: { width: 340, padding: 20, gap: 16, borderLeftWidth: 1, borderLeftColor: Colors.border, backgroundColor: Colors.secondaryBg },
+  widePanel: { width: 340, padding: 20, gap: 16, borderRightWidth: 1, borderRightColor: Colors.border, backgroundColor: Colors.secondaryBg },
   widePanelTitle: { color: Colors.white, fontSize: 16, fontWeight: '800' },
   actionColumn: { flexDirection: 'column', paddingHorizontal: 0 },
   actionRow: {
