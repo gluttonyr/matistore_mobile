@@ -4,7 +4,7 @@ import { Colors } from '@/constants/colors';
 
 // Website on a computer: the bottom tab bar becomes a left sidebar (used by the (tabs) and (admin) layouts).
 export const webSidebarStyles = StyleSheet.create({
-  root: { flexDirection: 'row-reverse' },
+  root: { flexDirection: 'row-reverse', backgroundColor: Colors.darkBg },
   tabBar: {
     flexDirection: 'column',
     width: 220,
@@ -26,4 +26,6 @@ export const webSidebarStyles = StyleSheet.create({
   },
   tabItemActive: { backgroundColor: Colors.cardBg },
   tabLabel: { fontSize: 15 },
+  // Tab page content: a readable width, centered next to the sidebar.
+  page: { width: '100%', maxWidth: 1100, alignSelf: 'center' },
 });

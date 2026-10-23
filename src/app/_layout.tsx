@@ -2,14 +2,24 @@
 import { UpdateAvailableModal } from '@/components/updateAvailableNodal';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { useVersionCheck } from '@/hooks/useVersionChech';
+import { useWideWeb } from '@/hooks/useWideWeb';
+import { Colors } from '@/constants/colors';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Stack } from 'expo-router';
+import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
+import type { ReactNode } from 'react';
+import { Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useRef } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import Toast from 'react-native-toast-message';
+
+// Web only: dark navigation theme, so no light background shows around centered screens.
+const webTheme = { ...DarkTheme, colors: { ...DarkTheme.colors, background: Colors.darkBg, card: Colors.darkBg } };
+function WebTheme({ children }: { children: ReactNode }) {
+  return Platform.OS === 'web' ? <ThemeProvider value={webTheme}>{children}</ThemeProvider> : <>{children}</>;
+}
 
 export default function RootLayout() {
   useFrameworkReady();
@@ -23,11 +33,17 @@ export default function RootLayout() {
   }
 
   const { visible: updateVisible, remindLater, dismiss } = useVersionCheck();
+  const wide = useWideWeb();
+  // Website on a computer: screens opened over the tabs (chat, deposit, event...) stay a readable width, centered.
+  const pushedScreen = wide
+    ? { animation: 'slide_from_right' as const, contentStyle: { width: '100%' as const, maxWidth: 960, alignSelf: 'center' as const, overflow: 'hidden' as const } }
+    : { animation: 'slide_from_right' as const };
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={wide ? { flex: 1, backgroundColor: Colors.darkBg } : { flex: 1 }}>
       <KeyboardProvider>
         <QueryClientProvider client={queryClientRef.current}>
+            <WebTheme>
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="index" />
               <Stack.Screen name="(auth)" />
@@ -38,47 +54,48 @@ export default function RootLayout() {
               {/* ── Screens poussés PAR-DESSUS les tabs ── */}
               <Stack.Screen
                 name="user_chats/[id]"
-                options={{ animation: 'slide_from_right' }}
+                options={pushedScreen}
               />
               <Stack.Screen
                 name="admin_chats/[id]"
-                options={{ animation: 'slide_from_right' }}
+                options={pushedScreen}
               />
               <Stack.Screen
                 name="admin_events/create"
-                options={{ animation: 'slide_from_right' }}
+                options={pushedScreen}
               />
               <Stack.Screen
                 name="admin_events/edit"
-                options={{ animation: 'slide_from_right' }}
+                options={pushedScreen}
               />
               <Stack.Screen
                 name="user_events/[id]"
-                options={{ animation: 'slide_from_right' }}
+                options={pushedScreen}
               />
               <Stack.Screen
                 name="user_chats/deposit-withdrawal"
-                options={{ animation: 'slide_from_right' }}
+                options={pushedScreen}
               />
               <Stack.Screen
                 name="user_transactions/index"
-                options={{ animation: 'slide_from_right' }}
+                options={pushedScreen}
               />
               <Stack.Screen
                 name="user_notifications/index"
-                options={{ animation: 'slide_from_right' }}
+                options={pushedScreen}
               />
               <Stack.Screen
                 name="admin_transactions/index"
-                options={{ animation: 'slide_from_right' }}
+                options={pushedScreen}
               />
               <Stack.Screen
                 name="config/slide-editor"
-                options={{ animation: 'slide_from_right' }}
+                options={pushedScreen}
               />
 
               <Stack.Screen name="+not-found" />
             </Stack>
+            </WebTheme>
 
           <StatusBar style="light" />
           <Toast />

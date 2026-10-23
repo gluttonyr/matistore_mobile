@@ -103,7 +103,7 @@ export default function TabsLayout() {
         overdrag={false}
       >
         {TABS.map(({ key, Screen }, index) => (
-          <View key={key} style={styles.page}>
+          <View key={key} style={[styles.page, wide && webSidebarStyles.page]}>
             {visitedTabs.has(index) ? <Screen /> : null}
           </View>
         ))}
