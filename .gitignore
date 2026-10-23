@@ -49,5 +49,9 @@ modules/**/android/build/
 # Android signing keystores
 *.keystore
 
+# Local iOS build credentials
+build-ios.ps1
+submit-ios.ps1
+
 # Local IDE cache
 .idea/caches/deviceStreaming.xml

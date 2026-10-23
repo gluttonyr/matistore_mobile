@@ -10,6 +10,7 @@
     "ios": {
       "icon": "./assets/logo-ios.png",
       "bundleIdentifier": "com.urbain-diligence.matistore-mobile",
+      "googleServicesFile": "./GoogleService-Info.plist",
       "usesAppleSignIn": true,
       "config": {
         "usesNonExemptEncryption": false

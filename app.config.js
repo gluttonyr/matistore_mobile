@@ -25,6 +25,7 @@ export default ({ config }) => ({
       ...config.ios,
       icon: "./assets/logo-ios.png",
       bundleIdentifier: "com.urbain-diligence.matistore-mobile",
+      googleServicesFile: "./GoogleService-Info.plist",
       appleTeamId: "98Y4TRJU7W",
       usesAppleSignIn: true,
       config: {
@@ -92,7 +93,7 @@ export default ({ config }) => ({
 
     extra: {
       ...config.extra,
-      apiUrl: "http://10.0.2.2:3000",
+      apiUrl: "https://matistore.tech",
       // Client Web (type "Application Web" dans Google Cloud Console) : utilisé
       // uniquement sur la plateforme web (Platform.OS === 'web').
       googleWebClientId:
