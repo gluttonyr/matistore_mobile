@@ -1,16 +1,18 @@
 import GreenButton from '@/components/ui/GreenButton';
 import MatiLogo from '@/components/ui/MatiLogo';
+import { useWideWeb } from '@/hooks/useWideWeb';
 import { Colors } from '@/constants/colors';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useEffect, useRef } from 'react';
-import { Animated, Dimensions, StyleSheet, Text, View } from 'react-native';
+import { Animated, Dimensions, Platform, StyleSheet, Text, View } from 'react-native';
 
 const { width, height } = Dimensions.get('window');
 
 export default function WelcomeScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(40)).current;
+  const wide = useWideWeb();
 
   useEffect(() => {
     Animated.parallel([
@@ -20,7 +22,7 @@ export default function WelcomeScreen() {
   }, []);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, wide && styles.containerWide]}>
       <LinearGradient
         colors={['rgba(125,255,42,0.06)', Colors.darkBg]}
         style={StyleSheet.absoluteFill}
@@ -32,8 +34,8 @@ export default function WelcomeScreen() {
       <View style={styles.circleTop} />
       <View style={styles.circleBottom} />
 
-      {/* SVG Illustration */}
-      <View style={styles.illustrationContainer}>
+      {/* SVG Illustration (website on a computer: the left panel already shows the brand) */}
+      {!wide && <View style={styles.illustrationContainer}>
         <View style={styles.illustrationBox}>
           <View style={styles.phoneIllustration}>
             <View style={styles.phoneMock}>
@@ -57,12 +59,17 @@ export default function WelcomeScreen() {
             <Text style={styles.floatText}>Rapide</Text>
           </View>
         </View>
-      </View>
+      </View>}
 
-      <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-        <MatiLogo size={160} showText={true} />
-        
-        <Text style={styles.tagline}>Le store sécurisé et rapide !</Text>
+      <Animated.View style={[styles.content, wide && styles.contentWide, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+        {wide ? (
+          <Text style={styles.welcomeWide}>Bienvenue</Text>
+        ) : (
+          <>
+            <MatiLogo size={160} showText={true} />
+            <Text style={styles.tagline}>Le store sécurisé et rapide !</Text>
+          </>
+        )}
 
         <View style={styles.buttonsContainer}>
           <GreenButton
@@ -96,6 +103,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.darkBg,
   },
+  containerWide: { justifyContent: 'center' },
+  contentWide: { flex: 0 },
+  welcomeWide: { color: Colors.white, fontSize: 34, fontWeight: '900', marginBottom: 32 },
   circleTop: {
     position: 'absolute',
     top: -80,
@@ -190,7 +200,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   floatCardRight: {
-    left: undefined,
+    // web ignores `left: undefined` and keeps left: -30, which stretched the card
+    left: Platform.OS === 'web' ? 'auto' : undefined,
     right: -30,
     top: 100,
   },
