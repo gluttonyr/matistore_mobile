@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Platform,
   RefreshControl,
   SectionList,
   StyleSheet,
@@ -205,7 +206,8 @@ export default function UserNotificationsScreen() {
       ) : (
         <SectionList
           sections={sections}
-          inverted
+          // react-native-web draws inverted SectionLists upside down: on the web the newest is simply on top
+          inverted={Platform.OS !== 'web'}
           scrollEventThrottle={16}
           onScroll={(event) => {
             if (event.nativeEvent.contentOffset.y > 24) canLoadOlderRef.current = true;
