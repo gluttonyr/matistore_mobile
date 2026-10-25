@@ -21,7 +21,7 @@ import CountryPicker, {
 } from '@/components/CountryPicker';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Toast from 'react-native-toast-message';
-import { consumePendingAppleIdentityToken } from '@/hooks/useAppleAuth';
+import { consumePendingAppleIdentityToken, peekPendingAppleIdentityToken } from '@/hooks/useAppleAuth';
 
 
 export default function RegisterStep2() {
@@ -75,9 +75,10 @@ export default function RegisterStep2() {
         ...(params.appleId ? {
           appleId: params.appleId as string,
           provider: 'apple',
-          identityToken: consumePendingAppleIdentityToken() ?? undefined,
+          identityToken: peekPendingAppleIdentityToken() ?? undefined,
         } : {}),
       });
+      consumePendingAppleIdentityToken();
       Toast.show({
         type: 'success',
         text1: 'Compte créé',

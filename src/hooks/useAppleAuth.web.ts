@@ -23,6 +23,11 @@ type AppleIDGlobal = {
 
 let pendingAppleIdentityToken: string | null = null;
 
+// Read without clearing: a failed sign-up attempt (e.g. phone already used) must be able to retry.
+export function peekPendingAppleIdentityToken(): string | null {
+  return pendingAppleIdentityToken;
+}
+
 export function consumePendingAppleIdentityToken(): string | null {
   const token = pendingAppleIdentityToken;
   pendingAppleIdentityToken = null;
