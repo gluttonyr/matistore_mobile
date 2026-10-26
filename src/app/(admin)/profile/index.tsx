@@ -129,7 +129,7 @@ export default function ProfilePage() {
 
   const handleSave = async () => {
     if (!user?.trackingId) return;
-    if (!prenom || !nom || !email) {
+    if ((!prenom && !nom) || !email) {
       Toast.show({ type: 'error', text1: 'Erreur', text2: 'Veuillez remplir tous les champs.' });
       return;
     }

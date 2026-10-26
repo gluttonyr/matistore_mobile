@@ -24,7 +24,7 @@ export default function RegisterStep1() {
   const { signInWithApple } = useAppleAuth();
 
   const handleNext = () => {
-    if (!prenom || !nom || !email) {
+    if ((!prenom && !nom) || !email) {
       setError('Veuillez remplir tous les champs.');
       return;
     }

@@ -91,8 +91,8 @@ export function useAppleAuth() {
       router.push({
         pathname: '/(auth)/register-step2',
         params: {
-          prenom: givenName || 'Utilisateur',
-          nom: familyName || 'Apple',
+          prenom: givenName || '',
+          nom: familyName || '',
           email: result.email,
           appleId: result.appleId,
           provider: 'apple',

@@ -40,6 +40,12 @@ export default function RegisterStep2() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // Google / Apple may give only one of the two names (or none: then the user types a first name).
+  const nameFromProvider = !!(params.prenom || params.nom);
+  const [typedPrenom, setTypedPrenom] = useState('');
+  const prenom = nameFromProvider ? ((params.prenom as string) ?? '').trim() : typedPrenom.trim();
+  const nom = ((params.nom as string) ?? '').trim();
+
   const fullTelephone = `+${callingCode}${phoneNumber}`;
 
   const onSelectCountry = (country: Country) => {
@@ -50,7 +56,7 @@ export default function RegisterStep2() {
 
   const handleCreate = async () => {
     try {
-      if (!phoneNumber || !password || !confirm) {
+      if (!phoneNumber || !password || !confirm || (!prenom && !nom)) {
         setError('Veuillez remplir tous les champs.');
         return;
       }
@@ -65,9 +71,9 @@ export default function RegisterStep2() {
       setError('');
       setLoading(true);
       await authService.register({
-        prenom: params.prenom as string,
-        nom: params.nom as string,
-        username: `${params.nom} ${params.prenom}`.trim(),
+        prenom,
+        nom,
+        username: [nom, prenom].filter(Boolean).join(' '),
         email: params.email as string,
         telephone: fullTelephone,
         password,
@@ -143,11 +149,24 @@ export default function RegisterStep2() {
           <Text style={styles.title}>Presque terminé !</Text>
           <Text style={styles.subtitle}>Sécurisez votre compte</Text>
 
-          {params.prenom ? (
+          {nameFromProvider ? (
             <View style={styles.summaryCard}>
               <Text style={styles.summaryText}>
-                {params.prenom} {params.nom} · {params.email}
+                {[prenom, nom].filter(Boolean).join(' ')} · {params.email}
               </Text>
+            </View>
+          ) : params.email ? (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Prénom</Text>
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  style={styles.phoneInput}
+                  placeholder="Votre prénom"
+                  placeholderTextColor={Colors.textSecondary}
+                  value={typedPrenom}
+                  onChangeText={setTypedPrenom}
+                />
+              </View>
             </View>
           ) : null}
 
