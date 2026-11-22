@@ -16,7 +16,6 @@ import Badge from '@/components/ui/Badge';
 import MatiLogo from '@/components/ui/MatiLogo';
 import { Colors } from '@/constants/colors';
 import { usePushNotificationRegistration } from '@/hooks/usePushNotificationRegistration';
-import { usePhonePermissionsOnLogin } from '@/hooks/usePhonePermissionsOnLogin';
 import { ReferralFirstPrompt } from '@/components/referral/ReferralFirstPrompt';
 import { useForumHasNew } from '@/hooks/useForumHasNew';
 // import { useUnreadChatsCount } from '@/hooks/useUnreadChatsCount';
@@ -63,7 +62,6 @@ export default function TabsLayout() {
   const wide = useWideWeb();
 
   usePushNotificationRegistration();
-  usePhonePermissionsOnLogin();
 
   // const { count: chatsUnread } = useUnreadChatsCount(activeIndex);
   const { hasNew: forumHasNew } = useForumHasNew(activeIndex);

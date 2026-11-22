@@ -28,7 +28,6 @@ import { useAuth } from '@/hooks/useAuth';
 import type { Transaction } from '@/data_api/models/transaction.types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { dialUssd } from '@/modules/expo-ussd-dialer';
-import { hasPhonePermissions } from '@/hooks/usePhonePermissionsOnLogin';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { useChat } from '@/hooks/useChat';
 import { useChatSections } from '@/hooks/useChatSection';
@@ -689,9 +688,6 @@ export default function DepositWithdrawalScreen() {
       });
     };
 
-    // Phone permissions are asked once at login (usePhonePermissionsOnLogin), never here.
-    const canDialItself = Platform.OS === 'android' && await hasPhonePermissions();
-
     try {
       await createDepositTransaction();
     } catch (error) {
@@ -705,36 +701,42 @@ export default function DepositWithdrawalScreen() {
       return;
     }
 
-    // Without the permissions (or on iOS), open the phone's dialer with the code filled in.
-    const openDialer = async () => {
-      // iOS may refuse to prefill USSD strings containing * or # through tel:.
-      // Keep the code in the clipboard so the user can paste it in Phone if needed.
-      Clipboard.setString(code);
-      await Linking.openURL(`tel:${encodeURIComponent(code)}`);
+    // The code is always in the clipboard: the client can paste it in Phone if anything goes wrong.
+    Clipboard.setString(code);
+
+    const dialerOpened = () => {
       setManualDialOpened(true);
       if (Platform.OS === 'android') {
         Toast.show({ type: 'info', text1: 'Code prêt dans votre téléphone', text2: 'Appuyez sur Appeler pour payer. Nous vérifions ensuite votre paiement.' });
       }
     };
 
+    // Phone app with the code filled in: works on every phone, the client only taps Call.
+    const openDialer = async () => {
+      await Linking.openURL(`tel:${encodeURIComponent(code)}`);
+      dialerOpened();
+    };
+
     try {
-      if (!canDialItself) {
+      if (Platform.OS !== 'android') {
         await openDialer();
         return;
       }
-      try {
-        await dialUssd(code);
-      } catch (error) {
-        const nativeCode = (error as { code?: string } | null)?.code ?? '';
-        const message = error instanceof Error ? error.message : '';
-        if (/PERMISSION|USSD_UNAVAILABLE/.test(nativeCode) || /PERMISSION|USSD_UNAVAILABLE/i.test(message)) {
-          await openDialer();
-          return;
-        }
-        throw error;
-      }
+      // Never asks for a permission: launches the code when it is already granted, else opens the dialer.
+      const result = await dialUssd(code);
+      if (result === 'DIALER') dialerOpened();
     } catch (error) {
-      resetAfterUssdFailure(error);
+      const nativeCode = (error as { code?: string } | null)?.code ?? '';
+      if (nativeCode === 'USSD_CANCELLED') {
+        // The client closed the SIM choice: nothing launched, he can tap the button again.
+        setManualDialOpened(true);
+        return;
+      }
+      try {
+        await openDialer();
+      } catch (dialError) {
+        resetAfterUssdFailure(dialError);
+      }
     }
   };
 
