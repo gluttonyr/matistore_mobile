@@ -6,10 +6,10 @@ import { PermissionsAndroid, Platform } from 'react-native';
 
 const ASKED_KEY = 'phone-permissions-asked-v1';
 
-export const PHONE_PERMISSIONS = [
-  PermissionsAndroid.PERMISSIONS.CALL_PHONE,
-  PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
-];
+// PermissionsAndroid.PERMISSIONS does not exist on the web: read it only on Android.
+export const PHONE_PERMISSIONS = Platform.OS === 'android'
+  ? [PermissionsAndroid.PERMISSIONS.CALL_PHONE, PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE]
+  : [];
 
 /** True when MatiStore may launch the USSD code itself (call + SIM choice). */
 export async function hasPhonePermissions(): Promise<boolean> {

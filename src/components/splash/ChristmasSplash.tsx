@@ -1,6 +1,7 @@
 import MatiLogo from '@/components/ui/MatiLogo';
 import { useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Ellipse, G, Path, Rect } from 'react-native-svg';
 
 import { BALL_COUNT, BALL_GAP, BALL_ICONS, BallSlot } from './sportBalls';
@@ -26,10 +27,16 @@ type Props = {
 export function ChristmasSplash({ fadeAnim, scaleAnim, glowAnim, progressAnim }: Props) {
   const { width: W, height: H } = useWindowDimensions();
 
-  // The background is drawn "cover": map picture coordinates to the screen.
-  const cover = Math.max(W / BG_W, H / BG_H);
-  const ox = (W - BG_W * cover) / 2;
-  const oy = (H - BG_H * cover) / 2;
+  // Phones (shape close to the picture's): the picture fills the screen, barely cropped.
+  // Wide screens (tablet, computer): the whole picture, centred, never cut or blown up.
+  const fill = Math.max(W / BG_W, H / BG_H);
+  const fit = Math.min(W / BG_W, H / BG_H);
+  const cover = fill / fit <= 1.15 ? fill : fit;
+  const bgW = BG_W * cover;
+  const bgH = BG_H * cover;
+  const ox = (W - bgW) / 2;
+  const oy = (H - bgH) / 2;
+  const sideBands = ox > 1;
   const at = (x: number, y: number) => ({ left: ox + x * cover, top: oy + y * cover });
 
   // Layout of the centre block, scaled from the 390 × 844 design.
@@ -87,9 +94,20 @@ export function ChristmasSplash({ fadeAnim, scaleAnim, glowAnim, progressAnim }:
     <View style={styles.container}>
       <Animated.Image
         source={BG}
-        resizeMode="cover"
-        style={[StyleSheet.absoluteFill, { transform: [{ scale: breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.025] }) }] }]}
+        resizeMode="stretch"
+        style={[{ position: 'absolute', left: ox, top: oy, width: bgW, height: bgH }, { transform: [{ scale: breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.025] }) }] }]}
       />
+      {sideBands && (
+        // Soft black fades over the picture's left and right edges (wide enough for its slow zoom).
+        <>
+          <LinearGradient pointerEvents="none" colors={['#000', '#000', 'rgba(0,0,0,0)']} locations={[0, 0.25, 1]}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+            style={{ position: 'absolute', top: 0, bottom: 0, left: ox - bgW * 0.03, width: bgW * 0.2 }} />
+          <LinearGradient pointerEvents="none" colors={['rgba(0,0,0,0)', '#000', '#000']} locations={[0, 0.75, 1]}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+            style={{ position: 'absolute', top: 0, bottom: 0, left: ox + bgW * 0.83, width: bgW * 0.2 }} />
+        </>
+      )}
 
       {sparkles.map(([x, y, s], i) => (
         <Animated.View
