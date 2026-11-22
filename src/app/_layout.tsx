@@ -18,6 +18,7 @@ import { useRef } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import Toast from 'react-native-toast-message';
+import { toastConfig } from '@/components/ui/toastConfig';
 
 // Web only: dark navigation theme, so no light background shows around centered screens.
 const webTheme = { ...DarkTheme, colors: { ...DarkTheme.colors, background: Colors.darkBg, card: Colors.darkBg } };
@@ -36,7 +37,7 @@ export default function RootLayout() {
     queryClientRef.current = new QueryClient();
   }
 
-  const { visible: updateVisible, remindLater, dismiss } = useVersionCheck();
+  const { visible: updateVisible } = useVersionCheck();
   const wide = useWideWeb();
   const pushedScreen = { animation: 'slide_from_right' as const };
 
@@ -93,20 +94,26 @@ export default function RootLayout() {
                 name="config/slide-editor"
                 options={pushedScreen}
               />
+              <Stack.Screen name="referral/index" options={pushedScreen} />
+              <Stack.Screen name="referral/mine" options={pushedScreen} />
+              <Stack.Screen name="referral/results" options={pushedScreen} />
+              <Stack.Screen name="admin_referral/index" options={pushedScreen} />
+              <Stack.Screen name="admin_referral/settings" options={pushedScreen} />
+              <Stack.Screen name="admin_referral/stats" options={pushedScreen} />
+              <Stack.Screen name="coupons/index" options={pushedScreen} />
+              <Stack.Screen name="coupons/[id]" options={pushedScreen} />
+              <Stack.Screen name="admin_coupons/index" options={pushedScreen} />
+              <Stack.Screen name="admin_coupons/new" options={pushedScreen} />
 
               <Stack.Screen name="+not-found" />
             </Stack>
             </WebTheme>
 
           <StatusBar style="light" />
-          <Toast />
+          <Toast config={toastConfig} />
 
           {/* Placé au niveau racine : s'affiche par-dessus n'importe quel écran */}
-          <UpdateAvailableModal
-            visible={updateVisible}
-            onClose={dismiss}
-            onRemindLater={remindLater}
-          />
+          <UpdateAvailableModal visible={updateVisible} />
         </QueryClientProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>

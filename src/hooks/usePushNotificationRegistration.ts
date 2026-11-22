@@ -94,6 +94,7 @@ export function usePushNotificationRegistration(): void {
         userName?: string;
         recipientTrackingIds?: string[];
         recipientRoles?: UserRole[];
+        couponId?: string;
       };
       const notificationTitle = request.content.title ?? '';
 
@@ -137,6 +138,8 @@ export function usePushNotificationRegistration(): void {
             params: { id: data.discussionId, name: notificationTitle || 'MatiStore Support' },
           });
         }
+      } else if (data.type === 'COUPON' && data.couponId) {
+        router.push({ pathname: '/coupons/[id]', params: { id: String(data.couponId) } } as any);
       } else if (data.type === 'ADMIN_BROADCAST') {
         if (user?.role === UserRole.ADMIN) router.replace('/(admin)/admin-home');
         else router.push('/user_notifications');

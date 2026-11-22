@@ -417,9 +417,10 @@ export default function AdminTransactionsScreen() {
 
               {isExpanded && (
               <View style={styles.details}>
+                <Detail label="Bookmaker" value={transaction.bookmaker || '1XBET'} />
                 {!!transaction.numeroTelephone && <Detail label="Numéro de téléphone" value={transaction.numeroTelephone} />}
-                {!!transaction.compteDestinataire && <Detail label="Compte 1XBET destinataire" value={transaction.compteDestinataire} />}
-                {!!transaction.codeRetrait && <Detail label="Code de retrait 1XBET" value={transaction.codeRetrait} />}
+                {!!transaction.compteDestinataire && <Detail label={`Compte ${transaction.bookmaker || '1XBET'} destinataire`} value={transaction.compteDestinataire} />}
+                {!!transaction.codeRetrait && <Detail label={`Code de retrait ${transaction.bookmaker || '1XBET'}`} value={transaction.codeRetrait} />}
                 {!!transaction.referenceClient && <Detail label="Référence déclarée par le client" value={transaction.referenceClient} />}
                 {!!transaction.referencePaiement && <Detail label="Référence confirmée" value={transaction.referencePaiement} />}
                 {!!transaction.dateValidation && <Detail label="Date de traitement" value={formatDateTime(transaction.dateValidation)} />}
@@ -437,7 +438,7 @@ export default function AdminTransactionsScreen() {
                 const ussd = getWithdrawalUssd(transaction);
                 return (
                   <View style={styles.captureReconciliationActions}>
-                    <Text style={styles.captureReconciliationHint}>Le compte 1XBET du client a été débité. Envoyez le montant au numéro indiqué, puis validez le retrait.</Text>
+                    <Text style={styles.captureReconciliationHint}>Le compte {transaction.bookmaker || '1XBET'} du client a été débité. Envoyez le montant au numéro indiqué, puis validez le retrait.</Text>
                     {ussd ? (
                       <View style={styles.claimModalActions}>
                         <TouchableOpacity style={styles.editStepButton} onPress={() => Clipboard.setString(ussd)}>
@@ -523,7 +524,7 @@ export default function AdminTransactionsScreen() {
         type="warning"
         title="Confirmer la validation manuelle"
         message={captureToValidate
-          ? `Après vérification du paiement, confirmez avoir crédité manuellement le compte 1XBET ${captureToValidate.compteDestinataire ?? '—'} de ${captureToValidate.montant.toLocaleString('fr-FR')} FCFA.`
+          ? `Après vérification du paiement, confirmez avoir crédité manuellement le compte ${captureToValidate.bookmaker || '1XBET'} ${captureToValidate.compteDestinataire ?? '—'} de ${captureToValidate.montant.toLocaleString('fr-FR')} FCFA.`
           : undefined}
         confirmText="Valider manuellement"
         secondaryText="Annuler"

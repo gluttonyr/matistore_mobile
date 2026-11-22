@@ -1,4 +1,4 @@
-import { Calendar, MessageCircle, User, Users } from 'lucide-react-native';
+import { Calendar, House, MessageCircle, User, Users } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import PagerView from '@/components/PagerView';
@@ -16,14 +16,17 @@ import Badge from '@/components/ui/Badge';
 import MatiLogo from '@/components/ui/MatiLogo';
 import { Colors } from '@/constants/colors';
 import { usePushNotificationRegistration } from '@/hooks/usePushNotificationRegistration';
+import { usePhonePermissionsOnLogin } from '@/hooks/usePhonePermissionsOnLogin';
+import { ReferralFirstPrompt } from '@/components/referral/ReferralFirstPrompt';
 import { useForumHasNew } from '@/hooks/useForumHasNew';
 // import { useUnreadChatsCount } from '@/hooks/useUnreadChatsCount';
 import { registerTabNavigator } from '@/utils/tabNavigation';
 import { useWideWeb } from '@/hooks/useWideWeb';
 import { webSidebarStyles } from '@/components/webSidebarStyles';
+import { FloatingTabBar } from '@/components/FloatingTabBar';
 
 const TABS = [
-  { key: 'home',    label: 'Accueil',      Icon: Users,         Screen: HomeScreen },
+  { key: 'home',    label: 'Accueil',      Icon: House,         Screen: HomeScreen },
   { key: 'chats',   label: 'Chats',        Icon: MessageCircle, Screen: ChatsScreen },
   { key: 'events',  label: 'Événements',   Icon: Calendar,      Screen: EventsScreen },
   { key: 'forum',   label: 'Forum',        Icon: Users,         Screen: ForumScreen },
@@ -60,6 +63,7 @@ export default function TabsLayout() {
   const wide = useWideWeb();
 
   usePushNotificationRegistration();
+  usePhonePermissionsOnLogin();
 
   // const { count: chatsUnread } = useUnreadChatsCount(activeIndex);
   const { hasNew: forumHasNew } = useForumHasNew(activeIndex);
@@ -110,12 +114,14 @@ export default function TabsLayout() {
         ))}
       </PagerView>
 
-      <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 8) }, wide && webSidebarStyles.tabBar]}>
-        {wide && (
-          <View style={webSidebarStyles.brand}>
-            <MatiLogo size={90} showText />
-          </View>
-        )}
+      {!wide && (
+        <FloatingTabBar tabs={TABS} activeIndex={activeIndex} onPress={handleTabPress} badges={{ forum: { dot: forumHasNew } }} />
+      )}
+      {wide && (
+      <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 8) }, webSidebarStyles.tabBar]}>
+        <View style={webSidebarStyles.brand}>
+          <MatiLogo size={90} showText />
+        </View>
         {TABS.map(({ key, label, Icon }, index) => {
           const focused = activeIndex === index;
           const color = focused ? Colors.primaryGreen : Colors.textSecondary;
@@ -142,6 +148,8 @@ export default function TabsLayout() {
           );
         })}
       </View>
+      )}
+      <ReferralFirstPrompt />
     </View>
   );
 }

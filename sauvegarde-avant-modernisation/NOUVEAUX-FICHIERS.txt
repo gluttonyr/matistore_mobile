@@ -1,0 +1,9 @@
+assets/splash-noel.png
+src/components/FloatingTabBar.tsx
+src/components/splash/ChristmasSplash.tsx
+src/components/splash/sportBalls.tsx
+src/components/ui/FadeIn.tsx
+src/components/ui/PressableScale.tsx
+src/components/ui/toastConfig.tsx
+src/components/HomeHighlights.tsx
+src/components/christmas/Christmas.tsx

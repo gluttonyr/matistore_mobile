@@ -16,7 +16,8 @@ import {
   Phone,
   Smartphone,
 } from 'lucide-react-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FadeIn } from '@/components/ui/FadeIn';
 import type { ReactNode } from 'react';
 import {
   Alert,
@@ -59,7 +60,7 @@ const STATUS_CONFIG: Record<TransactionStatus, StatusConfig> = {
   },
   EN_ATTENTE_ADMIN: {
     label: 'Paiement vérifié, en attente de validation',
-    description: 'Votre paiement est confirmé. Nous finalisons le crédit de votre compte 1XBET.',
+    description: 'Votre paiement est confirmé. Nous finalisons le crédit de votre compte.',
     color: '#A78BFA',
     step: 2,
   },
@@ -94,6 +95,25 @@ const STATUS_CONFIG: Record<TransactionStatus, StatusConfig> = {
 
 const FLOW_STEPS = ['Demande', 'Vérification', 'Terminé'];
 
+type Filter = 'ALL' | 'DEPOT' | 'RETRAIT' | 'PENDING';
+const FILTERS: { key: Filter; label: string }[] = [
+  { key: 'ALL', label: 'Tous' },
+  { key: 'DEPOT', label: 'Dépôts' },
+  { key: 'RETRAIT', label: 'Retraits' },
+  { key: 'PENDING', label: 'En cours' },
+];
+const isPending = (t: Transaction) => !STATUS_CONFIG[t.statut]?.terminal;
+type Row = { kind: 'day'; key: string; label: string } | { kind: 'tx'; key: string; item: Transaction };
+
+function dayLabel(d: Date) {
+  const today = new Date();
+  const yesterday = new Date(Date.now() - 86_400_000);
+  if (d.toDateString() === today.toDateString()) return 'AUJOURD’HUI';
+  if (d.toDateString() === yesterday.toDateString()) return 'HIER';
+  return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase();
+}
+const fcfa = (n: number) => Math.round(n).toLocaleString('fr-FR').replace(/\u202f|\u00a0/g, ' ');
+
 export default function UserTransactionsScreen() {
   const { token } = useAuth();
   const wide = useWideWeb();
@@ -106,6 +126,36 @@ export default function UserTransactionsScreen() {
   const [claimTarget, setClaimTarget] = useState<Transaction | null>(null);
   const [claimSubmitting, setClaimSubmitting] = useState(false);
   const loadRequestRef = useRef(0);
+  const [filter, setFilter] = useState<Filter>('ALL');
+
+  // This month's validated totals (from the transactions loaded so far).
+  const month = useMemo(() => {
+    const now = new Date();
+    const inMonth = transactions.filter((t) => {
+      const d = new Date(t.createdAt);
+      return t.statut === 'VALIDEE' && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    });
+    const sum = (type: 'DEPOT' | 'RETRAIT') => inMonth.filter((t) => t.type === type).reduce((a, t) => a + (t.montant || 0), 0);
+    const count = (type: 'DEPOT' | 'RETRAIT') => inMonth.filter((t) => t.type === type).length;
+    return {
+      name: now.toLocaleDateString('fr-FR', { month: 'long' }).toUpperCase(),
+      deposit: sum('DEPOT'), deposits: count('DEPOT'), withdrawal: sum('RETRAIT'), withdrawals: count('RETRAIT'),
+    };
+  }, [transactions]);
+
+  // Filtered list, grouped by day.
+  const rows = useMemo<Row[]>(() => {
+    const list = transactions.filter((t) => filter === 'ALL' || (filter === 'PENDING' ? isPending(t) : t.type === filter));
+    const out: Row[] = [];
+    let last = '';
+    for (const item of list) {
+      const d = new Date(item.createdAt);
+      const key = d.toDateString();
+      if (key !== last) { out.push({ kind: 'day', key: 'day-' + key, label: dayLabel(d) }); last = key; }
+      out.push({ kind: 'tx', key: item.trackingId, item });
+    }
+    return out;
+  }, [transactions, filter]);
 
   const submitClaim = async () => {
     if (!claimTarget || claimSubmitting) return;
@@ -179,8 +229,37 @@ export default function UserTransactionsScreen() {
         </View>
       ) : (
         <FlatList
-          data={transactions}
-          keyExtractor={(item) => item.trackingId}
+          data={rows}
+          keyExtractor={(row) => row.key}
+          ListHeaderComponent={(
+            <View style={st.headerBlock}>
+              <View style={st.summaryRow}>
+                <View style={[st.summaryTile, st.summaryTileGreen]}>
+                  <Text style={[st.summaryLabel, { color: '#9BFF5C' }]}>DÉPOSÉ EN {month.name}</Text>
+                  <Text style={st.summaryValue}>{fcfa(month.deposit)} <Text style={st.summaryUnit}>FCFA</Text></Text>
+                  <Text style={st.summaryCount}>{month.deposits} dépôt{month.deposits > 1 ? 's' : ''}</Text>
+                </View>
+                <View style={st.summaryTile}>
+                  <Text style={st.summaryLabel}>RETIRÉ EN {month.name}</Text>
+                  <Text style={st.summaryValue}>{fcfa(month.withdrawal)} <Text style={st.summaryUnit}>FCFA</Text></Text>
+                  <Text style={st.summaryCount}>{month.withdrawals} retrait{month.withdrawals > 1 ? 's' : ''}</Text>
+                </View>
+              </View>
+              <View style={st.chips}>
+                {FILTERS.map(({ key, label }) => (
+                  <TouchableOpacity
+                    key={key}
+                    style={[st.chip, filter === key && st.chipOn]}
+                    onPress={() => setFilter(key)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: filter === key }}
+                  >
+                    <Text style={[st.chipText, filter === key && st.chipTextOn]}>{label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
           contentContainerStyle={[st.list, wide && webSidebarStyles.readable]}
           refreshControl={
             <RefreshControl
@@ -200,11 +279,13 @@ export default function UserTransactionsScreen() {
           ListEmptyComponent={() => (
             <Text style={st.emptyText}>Aucune transaction pour le moment.</Text>
           )}
-          renderItem={({ item }) => {
+          renderItem={({ item: row, index }) => {
+            if (row.kind === 'day') return <Text style={st.dayLabel}>{row.label}</Text>;
+            const item = row.item;
             const config = item.type === 'RETRAIT' && item.statut === 'VALIDEE'
               ? {
                 ...STATUS_CONFIG[item.statut],
-                description: `Votre compte 1XBET a été débité${item.montant > 0 ? ` de ${item.montant.toLocaleString('fr-FR')} FCFA` : ''}. Votre retrait a été envoyé au numéro indiqué.`,
+                description: `Votre compte ${item.bookmaker || '1XBET'} a été débité${item.montant > 0 ? ` de ${item.montant.toLocaleString('fr-FR')} FCFA` : ''}. Votre retrait a été envoyé au numéro indiqué.`,
               }
               : item.type === 'DEPOT' && item.statut === 'EN_ATTENTE_PREUVE' && !!item.creditError
                 ? {
@@ -216,7 +297,7 @@ export default function UserTransactionsScreen() {
               ? {
                 ...STATUS_CONFIG[item.statut],
                 label: 'Retrait en vérification',
-                description: 'Nous vérifions votre code de retrait et votre compte 1XBET.',
+                description: `Nous vérifions votre code de retrait et votre compte ${item.bookmaker || '1XBET'}.`,
               }
               : item.type === 'RETRAIT' && item.statut === 'REJETEE'
                 ? {
@@ -233,13 +314,14 @@ export default function UserTransactionsScreen() {
               ? {
                 ...STATUS_CONFIG[item.statut],
                 label: 'Compte débité · retrait à envoyer',
-                  description: `Demande de retrait validée. Votre compte 1XBET a été débité${item.montant > 0 ? ` de ${item.montant.toLocaleString('fr-FR')} FCFA` : ''}. Patientez pendant la préparation de l’envoi au numéro indiqué.`,
+                  description: `Demande de retrait validée. Votre compte ${item.bookmaker || '1XBET'} a été débité${item.montant > 0 ? ` de ${item.montant.toLocaleString('fr-FR')} FCFA` : ''}. Patientez pendant la préparation de l’envoi au numéro indiqué.`,
               }
                 : STATUS_CONFIG[item.statut];
             const date = new Date(item.createdAt);
 
             return (
-              <View style={[st.card, { borderLeftColor: config.color }]}>
+              <FadeIn index={index}>
+              <View style={st.card}>
                 <View style={st.cardHeader}>
                   <View style={[st.typeIcon, { backgroundColor: item.type === 'DEPOT' ? 'rgba(125,255,42,0.12)' : 'rgba(245,158,11,0.12)' }]}>
                     <Smartphone color={item.type === 'DEPOT' ? Colors.primaryGreen : '#F59E0B'} size={18} />
@@ -252,8 +334,8 @@ export default function UserTransactionsScreen() {
                       {date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                     </Text>
                   </View>
-                  <Text style={st.cardAmount}>
-                    {item.montant > 0 ? `${item.montant.toLocaleString('fr-FR')} FCFA` : 'Montant non renseigné'}
+                  <Text style={[st.cardAmount, { color: config.terminal === 'success' ? (item.type === 'DEPOT' ? '#9BFF5C' : Colors.white) : config.terminal ? Colors.textSecondary : Colors.white }]}>
+                    {item.montant > 0 ? `${item.type === 'DEPOT' ? '+' : '−'}${fcfa(item.montant)} FCFA` : '—'}
                   </Text>
                 </View>
 
@@ -315,6 +397,7 @@ export default function UserTransactionsScreen() {
                 )}
 
               </View>
+              </FadeIn>
             );
           }}
         />
@@ -389,25 +472,38 @@ const st = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  backBtn: { padding: 4 },
-  headerTitle: { color: Colors.white, fontSize: 16, fontWeight: '700' },
-  list: { padding: 16, gap: 12, flexGrow: 1 },
+  backBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#161616', alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { color: Colors.white, fontSize: 20, fontWeight: '900' },
+  list: { padding: 16, gap: 10, flexGrow: 1 },
+  headerBlock: { gap: 14, marginBottom: 4 },
+  summaryRow: { flexDirection: 'row', gap: 10 },
+  summaryTile: { flex: 1, padding: 14, borderRadius: 20, backgroundColor: '#0E0E0E', borderWidth: 1, borderColor: Colors.border, gap: 4 },
+  summaryTileGreen: { borderColor: 'rgba(125,255,42,0.22)' },
+  summaryLabel: { color: Colors.textSecondary, fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
+  summaryValue: { color: Colors.white, fontSize: 19, fontWeight: '900' },
+  summaryUnit: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700' },
+  summaryCount: { color: Colors.textSecondary, fontSize: 11 },
+  chips: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  chip: { height: 34, paddingHorizontal: 14, borderRadius: 17, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', justifyContent: 'center' },
+  chipOn: { backgroundColor: '#F5F5F5', borderColor: '#F5F5F5' },
+  chipText: { color: '#D6D6D6', fontSize: 13, fontWeight: '700' },
+  chipTextOn: { color: '#050505', fontWeight: '800' },
+  dayLabel: { color: '#8A8A8A', fontSize: 11, fontWeight: '800', letterSpacing: 1.4, marginTop: 10, marginBottom: 2, marginLeft: 2 },
   emptyText: { color: Colors.textSecondary, textAlign: 'center', marginTop: 40 },
   card: {
-    backgroundColor: Colors.cardBg,
-    borderRadius: 16,
+    backgroundColor: '#0E0E0E',
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: Colors.border,
-    borderLeftWidth: 4,
     padding: 15,
     gap: 14,
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  typeIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  typeIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   titleGroup: { flex: 1, gap: 3 },
   cardType: { color: Colors.white, fontWeight: '800', fontSize: 14 },
-  cardDate: { color: Colors.textSecondary, fontSize: 10 },
-  cardAmount: { color: Colors.primaryGreen, fontWeight: '900', fontSize: 14 },
+  cardDate: { color: Colors.textSecondary, fontSize: 11 },
+  cardAmount: { color: Colors.primaryGreen, fontWeight: '900', fontSize: 16 },
   statusPanel: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 12, padding: 11 },
   statusIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   statusCopy: { flex: 1, gap: 3 },

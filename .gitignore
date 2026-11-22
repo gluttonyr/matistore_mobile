@@ -55,3 +55,6 @@ submit-ios.ps1
 
 # Local IDE cache
 .idea/caches/deviceStreaming.xml
+
+# Gradle caches of the local native modules
+modules/**/android/.gradle/

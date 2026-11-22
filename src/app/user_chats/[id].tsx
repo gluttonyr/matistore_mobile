@@ -170,9 +170,9 @@ const st = StyleSheet.create({
     backgroundColor: Colors.secondaryBg,
     borderBottomWidth: 1, borderBottomColor: Colors.border, gap: 12,
   },
-  backBtn: { padding: 4 },
+  backBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#161616', alignItems: 'center', justifyContent: 'center' },
   headerInfo: { flex: 1 },
-  headerName: { color: Colors.white, fontSize: 16, fontWeight: '700' },
+  headerName: { color: Colors.white, fontSize: 16, fontWeight: '800' },
   headerStatus: { color: Colors.primaryGreen, fontSize: 12 },
   headerActions: { flexDirection: 'row', gap: 8 },
   headerActionBtn: {

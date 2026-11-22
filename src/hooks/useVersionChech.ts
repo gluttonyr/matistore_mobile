@@ -11,6 +11,12 @@ export function useVersionCheck() {
   const [checking, setChecking] = useState(true);
 
   const check = useCallback(async () => {
+    // The website is always up to date: never show the store update dialog there.
+    if (Platform.OS === 'web') {
+      setVisible(false);
+      setChecking(false);
+      return;
+    }
     setChecking(true);
     try {
       const parametre = await parametreService.getById(PARAMETRE_CODE);
@@ -37,15 +43,6 @@ export function useVersionCheck() {
     check();
   }, [check]);
 
-  // "Me rappeler plus tard" ferme juste le dialogue pour cette session-ci —
-  // rien n'est persisté, donc à la prochaine fermeture totale + réouverture
-  // de l'app, le check repart de zéro et le dialogue réapparaît si toujours
-  // en dessous de la version minimale.
-  const remindLater = useCallback(() => {
-    setVisible(false);
-  }, []);
-
-  const dismiss = useCallback(() => setVisible(false), []);
-
-  return { visible, checking, remindLater, dismiss };
+  // The update is mandatory: the dialog cannot be closed until the app is updated.
+  return { visible, checking };
 }

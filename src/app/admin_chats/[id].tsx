@@ -321,7 +321,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
     gap: 10,
   },
-  backBtn: { padding: 4 },
+  backBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#161616', alignItems: 'center', justifyContent: 'center' },
   catIconWrap: {
     width: 36,
     height: 36,
@@ -330,7 +330,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerInfo: { flex: 1 },
-  headerName: { color: Colors.white, fontSize: 15, fontWeight: '700' },
+  headerName: { color: Colors.white, fontSize: 16, fontWeight: '800' },
   headerSubRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
   catPill: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5 },
   catPillText: { fontSize: 10, fontWeight: '700' },

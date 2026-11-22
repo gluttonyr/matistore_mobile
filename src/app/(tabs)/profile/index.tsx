@@ -8,9 +8,14 @@ import { SocialLinks } from '@/components/SocialLinks';
 import { authStorage } from '@/storage/authStorage';
 import { useQueryClient } from '@tanstack/react-query';
 import * as ImagePicker from 'expo-image-picker';
-import { Check, ChevronRight, Edit3, ImagePlus, LogOut, Mail, Phone, Trash2, User, X } from 'lucide-react-native';
+import { Check, ChevronRight, Edit3, Gift, ImagePlus, LogOut, Mail, Phone, Trash2, Trophy, User, X } from 'lucide-react-native';
+import { ChristmasHat, SnowCap } from '@/components/christmas/Christmas';
+import { router } from 'expo-router';
 import { InfoModal } from '@/components/infomodal';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { transactionService } from '@/data_api/services/transactionService';
+import { referralService } from '@/data_api/services/referralService';
+import { FadeIn } from '@/components/ui/FadeIn';
 import {
   ActivityIndicator,
   Image,
@@ -62,6 +67,7 @@ function AvatarInitials({
             : <Text style={styles.avatarText}>{initials}</Text>}
         </LinearGradient>
       </View>
+      <ChristmasHat size={76} />
       <View pointerEvents="none" style={styles.avatarEditButton}>
         <ImagePlus color="#000" size={21} />
       </View>
@@ -128,6 +134,14 @@ function EditableField({
 // ─── Page principale ─────────────────────────────────────────────────────────
 export default function ProfilePage() {
   const { user, logout } = useAuth();
+
+  // Three figures under the profile card: operations, referrals, tournament rank.
+  const [stats, setStats] = useState<{ ops: number | null; filleuls: number | null; rank: number | null }>({ ops: null, filleuls: null, rank: null });
+  useEffect(() => {
+    transactionService.getAll({ page: 1, limit: 1 }).then((p) => setStats((c) => ({ ...c, ops: p.total }))).catch(() => {});
+    referralService.getMe().then((m) => setStats((c) => ({ ...c, filleuls: m.totalFilleuls }))).catch(() => {});
+    referralService.getTournament().then((t) => setStats((c) => ({ ...c, rank: t.round?.me?.rank ?? null }))).catch(() => {});
+  }, []);
   const queryClient = useQueryClient();
   const profileImageUri = useFileUrl('profiles', user?.image);
 
@@ -339,6 +353,7 @@ export default function ProfilePage() {
 
         {/* ── Avatar + identité ── */}
         <View style={styles.heroCard}>
+          <SnowCap variant={0} height={24} />
           <AvatarInitials
             prenom={prenom}
             nom={nom}
@@ -366,6 +381,25 @@ export default function ProfilePage() {
             Membre depuis {new Date(user.createdAt).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
           </Text>
         </View>
+
+        {/* ── Chiffres ── */}
+        <FadeIn index={1} style={styles.statsRow}>
+          <View style={styles.statTile}>
+            <SnowCap variant={1} height={18} />
+            <Text style={styles.statValue}>{stats.ops ?? '–'}</Text>
+            <Text style={styles.statLabel}>Opérations</Text>
+          </View>
+          <View style={styles.statTile}>
+            <SnowCap variant={2} height={18} />
+            <Text style={styles.statValue}>{stats.filleuls ?? '–'}</Text>
+            <Text style={styles.statLabel}>Filleuls</Text>
+          </View>
+          <TouchableOpacity style={[styles.statTile, styles.statTileGold]} onPress={() => router.push('/referral' as any)} activeOpacity={0.8}>
+            <SnowCap variant={0} height={18} />
+            <Text style={[styles.statValue, { color: '#FFC94D' }]}>{stats.rank ? `${stats.rank}${stats.rank === 1 ? 'er' : 'ᵉ'}` : '–'}</Text>
+            <Text style={[styles.statLabel, { color: '#C8B98A' }]}>Tournoi</Text>
+          </TouchableOpacity>
+        </FadeIn>
 
         {/* ── Section informations ── */}
         <View style={styles.section}>
@@ -405,6 +439,21 @@ export default function ProfilePage() {
             keyboardType="phone-pad"
             autoCapitalize="none"
           />
+        </View>
+
+        {/* ── Parrainage ── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Parrainage</Text>
+          <TouchableOpacity style={[styles.logoutBtn, styles.referralBtn]} onPress={() => router.push('/referral/mine' as any)} activeOpacity={0.75}>
+            <Gift color={Colors.primaryGreen} size={18} />
+            <Text style={styles.referralText}>Mes parrainages · mon code · mon parrain</Text>
+            <ChevronRight color={Colors.textSecondary} size={16} style={{ marginLeft: 'auto' }} />
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.logoutBtn, styles.referralBtn]} onPress={() => router.push('/referral' as any)} activeOpacity={0.75}>
+            <Trophy color="#FFD54A" size={18} />
+            <Text style={styles.referralText}>Tournoi de parrainage</Text>
+            <ChevronRight color={Colors.textSecondary} size={16} style={{ marginLeft: 'auto' }} />
+          </TouchableOpacity>
         </View>
 
         {/* ── Séparateur ── */}
@@ -460,7 +509,7 @@ const styles = StyleSheet.create({
     paddingTop: 56,
     paddingBottom: 24,
   },
-  pageTitle: { color: Colors.white, fontSize: 26, fontWeight: '800', letterSpacing: 0.4 },
+  pageTitle: { color: Colors.white, fontSize: 28, fontWeight: '900', letterSpacing: -0.3 },
   editBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -499,18 +548,18 @@ const styles = StyleSheet.create({
     gap: 18,
     marginHorizontal: 24,
     marginBottom: 16,
-    backgroundColor: Colors.cardBg,
-    borderRadius: 20,
+    backgroundColor: '#0E0E0E',
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: Colors.border,
     padding: 20,
   },
   avatarRing: {
-    width: 72, height: 72, borderRadius: 36,
+    width: 76, height: 76, borderRadius: 38,
     padding: 3,
     backgroundColor: 'rgba(125,255,42,0.15)',
     borderWidth: 2,
-    borderColor: 'rgba(125,255,42,0.35)',
+    borderColor: Colors.primaryGreen,
   },
   avatarContainer: { position: 'relative' },
   avatarGradient: {
@@ -575,6 +624,13 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 12, fontWeight: '700' },
   memberSince: { color: Colors.textSecondary, fontSize: 12 },
 
+  // Chiffres
+  statsRow: { flexDirection: 'row', gap: 10, marginHorizontal: 24, marginBottom: 22 },
+  statTile: { flex: 1, alignItems: 'center', gap: 3, paddingVertical: 14, borderRadius: 18, backgroundColor: '#0E0E0E', borderWidth: 1, borderColor: Colors.border },
+  statTileGold: { backgroundColor: '#15120A', borderColor: 'rgba(255,201,77,0.3)' },
+  statValue: { color: Colors.white, fontSize: 20, fontWeight: '900' },
+  statLabel: { color: Colors.textSecondary, fontSize: 11, fontWeight: '600' },
+
   // Section
   section: { paddingHorizontal: 24, marginBottom: 8 },
   sectionTitle: {
@@ -598,8 +654,8 @@ const styles = StyleSheet.create({
   fieldWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.cardBg,
-    borderRadius: 12,
+    backgroundColor: '#0E0E0E',
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: Colors.border,
     paddingHorizontal: 14,
@@ -643,5 +699,7 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
   },
   logoutText: { color: '#FF6B6B', fontSize: 15, fontWeight: '700' },
+  referralBtn: { marginHorizontal: 0, marginBottom: 10, borderColor: Colors.border, backgroundColor: '#0E0E0E' },
+  referralText: { color: Colors.white, fontSize: 14, fontWeight: '700', flexShrink: 1 },
   deleteAccountBtn: { marginTop: 12, backgroundColor: 'transparent' },
 });

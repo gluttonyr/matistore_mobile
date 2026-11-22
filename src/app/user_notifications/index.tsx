@@ -5,6 +5,7 @@ import { ImagePreviewModal } from '@/components/ImagePreviewModel';
 import { DateSeparator } from '@/components/dateSeparator';
 import { formatDayLabel } from '@/components/chatGrouping';
 import { Colors } from '@/constants/colors';
+import { CodeRow, StatusBadge } from '@/components/coupons/CouponTicket';
 import type { AppNotification } from '@/data_api/models/appNotification.types';
 import { notificationService } from '@/data_api/services/notificationService';
 import { markNotificationsSeen } from '@/storage/appNotificationSeen';
@@ -166,12 +167,36 @@ export default function UserNotificationsScreen() {
   useEffect(() => {
     const subscription = Notifications.addNotificationReceivedListener((notification) => {
       const data = notification.request.content.data as { type?: string };
-      if (data.type === 'ADMIN_BROADCAST' || data.type === 'transaction') void load();
+      if (data.type === 'ADMIN_BROADCAST' || data.type === 'transaction' || data.type === 'COUPON') void load();
     });
     return () => subscription.remove();
   }, [load]);
 
-  const renderItem = ({ item }: { item: AppNotification }) => (
+  const renderItem = ({ item }: { item: AppNotification }) => item.coupon ? (
+    <View style={styles.messageWrap}>
+      <TouchableOpacity
+        style={[styles.messageCard, styles.couponCard]}
+        activeOpacity={0.85}
+        onPress={() => router.push({ pathname: '/coupons/[id]', params: { id: item.coupon!.id } } as any)}
+        accessibilityRole="button"
+        accessibilityLabel="Ouvrir le coupon"
+      >
+        <Text style={styles.title}>{item.title}</Text>
+        <Text style={styles.body}>{item.coupon.odds ? `Cote ${item.coupon.odds}` : ''}{item.coupon.note ? `${item.coupon.odds ? ' · ' : ''}${item.coupon.note}` : ''}</Text>
+        <View style={styles.couponRow}>
+          <TouchableOpacity onPress={() => setPreviewUri(item.coupon!.imageUrl)} accessibilityRole="imagebutton" accessibilityLabel="Voir la capture">
+            <Image source={{ uri: item.coupon.imageUrl }} style={styles.couponShot} />
+            <View style={{ position: 'absolute', left: 6, bottom: 6 }}><StatusBadge status={item.coupon.status} small /></View>
+          </TouchableOpacity>
+          <View style={{ flex: 1, gap: 8, justifyContent: 'center' }}>
+            {item.coupon.codes.map((c) => <CodeRow key={c.bookmaker} bookmaker={c.bookmaker} code={c.code} size="s" />)}
+            <Text style={styles.couponLink}>Voir le coupon →</Text>
+          </View>
+        </View>
+        <Text style={styles.date}>{formatDate(item.createdAt)}</Text>
+      </TouchableOpacity>
+    </View>
+  ) : (
     <View style={styles.messageWrap}>
       <View style={styles.messageCard}>
         <View style={styles.messageHeader}>
@@ -271,4 +296,8 @@ const styles = StyleSheet.create({
   emptyText: { color: Colors.textSecondary, fontSize: 12, textAlign: 'center', lineHeight: 18 },
   retryButton: { marginTop: 14, borderRadius: 9, paddingHorizontal: 16, paddingVertical: 9, backgroundColor: Colors.cardBg },
   retryText: { color: Colors.primaryGreen, fontWeight: '700', fontSize: 12 },
+  couponCard: { borderColor: 'rgba(125,255,42,0.35)', borderWidth: 1 },
+  couponRow: { flexDirection: 'row', gap: 10, marginVertical: 10 },
+  couponShot: { width: 104, height: 130, borderRadius: 12, backgroundColor: '#161616' },
+  couponLink: { color: Colors.primaryGreen, fontSize: 12, fontWeight: '800' },
 });

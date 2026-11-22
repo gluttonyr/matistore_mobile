@@ -34,6 +34,7 @@ import {
   Users,
   Wallet,
 } from 'lucide-react-native';
+import { Snowfall } from '@/components/christmas/Christmas';
 import type { LucideIcon } from 'lucide-react-native';
 import { useMemo } from 'react';
 import Svg, { Path } from 'react-native-svg';
@@ -168,6 +169,8 @@ export function ChatBackground({
           )}
         </View>
       ))}
+      {/* At Christmas, light snow falls behind the messages. */}
+      <Snowfall count={12} />
     </View>
   );
 }

@@ -199,7 +199,7 @@ const pickAndSendImageFromGallery = async () => {
     },
   ]}>
         <TouchableOpacity
-          style={st.iconBtn}
+          style={[st.iconBtn, st.iconBtnTile]}
           onPress={() => {
             setShowAttachMenu((v) => !v);
             setShowStickers(false);
@@ -306,25 +306,28 @@ const st = StyleSheet.create({
  inputContainer: {
   flexDirection: 'row',
   alignItems: 'flex-end',
-  paddingHorizontal: 8,
+  paddingHorizontal: 10,
   paddingTop: 10,
-  backgroundColor: Colors.secondaryBg,
+  backgroundColor: '#0A0A0A',
   borderTopWidth: 1,
-  borderTopColor: Colors.border,
+  borderTopColor: 'rgba(255,255,255,0.06)',
   gap: 6,
 },
-  iconBtn: { padding: 9, justifyContent: 'center', alignItems: 'center' },
+  iconBtn: { width: 38, height: 44, justifyContent: 'center', alignItems: 'center' },
+  iconBtnTile: { width: 44, borderRadius: 15, backgroundColor: '#161616' },
   iconBtnRecording: { opacity: 0.8 },
   textInput: {
-    flex: 1, backgroundColor: Colors.cardBg,
-    borderRadius: 22, borderWidth: 1, borderColor: Colors.border,
-    paddingHorizontal: 14, paddingVertical: 10,
-    color: Colors.white, fontSize: 14, maxHeight: 100,
+    flex: 1, backgroundColor: '#121212',
+    borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 16, paddingVertical: 11, minHeight: 44,
+    color: Colors.white, fontSize: 15, maxHeight: 110,
   },
   sendBtn: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: Colors.cardBg, alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: Colors.border,
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: '#161616', alignItems: 'center', justifyContent: 'center',
   },
-  sendBtnActive: { backgroundColor: Colors.primaryGreen, borderColor: Colors.primaryGreen },
+  sendBtnActive: {
+    backgroundColor: Colors.primaryGreen,
+    shadowColor: Colors.primaryGreen, shadowOpacity: 0.35, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 5,
+  },
 });

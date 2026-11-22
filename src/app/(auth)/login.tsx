@@ -11,7 +11,7 @@ import { Image } from 'expo-image';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { ChevronLeft, Eye, EyeOff, Lock, Mail } from 'lucide-react-native';
+import { ChevronLeft, Eye, EyeOff, Headphones, Lock, Mail, Zap } from 'lucide-react-native';
 import { AnyActionArg, useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, KeyboardProvider } from 'react-native-keyboard-controller';
 import {
@@ -33,6 +33,17 @@ export default function LoginScreen() {
   const loginInProgressRef = useRef(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
+  // The logo floats gently above the form.
+  const floatAnim = useRef(new Animated.Value(0)).current;
+  const [focused, setFocused] = useState<'email' | 'password' | null>(null);
+  useEffect(() => {
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(floatAnim, { toValue: 1, duration: 2000, useNativeDriver: true }),
+      Animated.timing(floatAnim, { toValue: 0, duration: 2000, useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [floatAnim]);
   const queryClient = useQueryClient();
   const { signInWithGoogle, loading: googleLoading, available: googleAvailable } = useGoogleAuth();
   const { signInWithApple } = useAppleAuth();
@@ -111,34 +122,28 @@ export default function LoginScreen() {
           <ChevronLeft color={Colors.textSecondary} size={24} />
         </TouchableOpacity>
 
-        {/* Illustration */}
+        {/* Logo qui flotte */}
         <View style={styles.illustrationContainer}>
-          <View style={styles.lockIllustration}>
-            <View style={styles.lockOuter}>
-              <LinearGradient colors={[Colors.cardBg, Colors.secondaryBg]} style={styles.lockInner}>
-                <Lock color={Colors.primaryGreen} size={40} strokeWidth={1.5} />
-              </LinearGradient>
-            </View>
-            <View style={styles.lockGlow} />
-            {[0, 1, 2].map((i) => (
-              <View key={i} style={[styles.lockDot, { left: 20 + i * 24, top: 70 + (i % 2) * 10 }]} />
-            ))}
-          </View>
+          <View style={styles.logoGlow} />
+          <Animated.View style={{ transform: [{ translateY: floatAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -8] }) }] }}>
+            <MatiLogo size={120} showText={false} />
+          </Animated.View>
         </View>
 
         <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-          <MatiLogo size={55} showText={false} />
-          <Text style={styles.title}>Connexion</Text>
-          <Text style={styles.subtitle}>Accédez à votre espace MATI STORE</Text>
+          <Text style={styles.title}>Content de vous revoir</Text>
+          <Text style={styles.subtitle}>Connectez-vous à votre compte Matistore</Text>
 
           {error ? <View style={styles.errorBox}><Text style={styles.errorText}>{error}</Text></View> : null}
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Email</Text>
-            <View style={styles.inputWrapper}>
-              <Mail color={Colors.textSecondary} size={18} style={styles.inputIcon} />
+            <View style={[styles.inputWrapper, focused === 'email' && styles.inputWrapperFocused]}>
+              <Mail color={focused === 'email' ? Colors.primaryGreen : Colors.textSecondary} size={18} style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
+                onFocus={() => setFocused('email')}
+                onBlur={() => setFocused(null)}
                 placeholder="votre@email.com"
                 placeholderTextColor={Colors.textSecondary}
                 value={email}
@@ -151,10 +156,12 @@ export default function LoginScreen() {
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Mot de passe</Text>
-            <View style={styles.inputWrapper}>
-              <Lock color={Colors.textSecondary} size={18} style={styles.inputIcon} />
+            <View style={[styles.inputWrapper, focused === 'password' && styles.inputWrapperFocused]}>
+              <Lock color={focused === 'password' ? Colors.primaryGreen : Colors.textSecondary} size={18} style={styles.inputIcon} />
               <TextInput
                 style={[styles.input, styles.inputPadRight]}
+                onFocus={() => setFocused('password')}
+                onBlur={() => setFocused(null)}
                 placeholder="••••••••"
                 placeholderTextColor={Colors.textSecondary}
                 value={password}
@@ -218,6 +225,17 @@ export default function LoginScreen() {
           )}
           {Platform.OS === 'web' && <AppleWebButton title="Continuer avec Apple" onPress={signInWithApple} />}
 
+          <View style={styles.trustRow}>
+            <View style={styles.trustTile}>
+              <View style={[styles.trustIcon, { backgroundColor: 'rgba(125,255,42,0.12)' }]}><Zap color={Colors.primaryGreen} size={16} /></View>
+              <Text style={styles.trustText}>Dépôts et retraits instantanés</Text>
+            </View>
+            <View style={styles.trustTile}>
+              <View style={[styles.trustIcon, { backgroundColor: 'rgba(167,139,250,0.14)' }]}><Headphones color="#A78BFA" size={16} /></View>
+              <Text style={styles.trustText}>Support humain 7j/7</Text>
+            </View>
+          </View>
+
           <View style={styles.registerRow}>
             <Text style={styles.registerText}>Pas encore de compte ? </Text>
             <TouchableOpacity onPress={() => router.push('/(auth)/register-step1')}>
@@ -234,7 +252,17 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.darkBg },
   scroll: { flexGrow: 1, paddingBottom: 40 },
   backBtn: { padding: 20, paddingTop: 56, alignSelf: 'flex-start' },
-  illustrationContainer: { height: 130, alignItems: 'center', justifyContent: 'center' },
+  illustrationContainer: { height: 150, alignItems: 'center', justifyContent: 'center' },
+  logoGlow: { position: 'absolute', width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(125,255,42,0.07)' },
+  inputWrapperFocused: {
+    borderColor: Colors.primaryGreen,
+    borderWidth: 1.5,
+    backgroundColor: 'rgba(125,255,42,0.04)',
+  },
+  trustRow: { flexDirection: 'row', gap: 10, marginBottom: 22 },
+  trustTile: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 16, backgroundColor: '#0E0E0E', borderWidth: 1, borderColor: Colors.border },
+  trustIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  trustText: { flex: 1, color: '#D6D6D6', fontSize: 12, fontWeight: '600' },
   lockIllustration: { position: 'relative', width: 130, height: 130, alignItems: 'center', justifyContent: 'center' },
   lockOuter: {
     width: 90, height: 90, borderRadius: 45,
@@ -254,8 +282,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primaryGreen, opacity: 0.5,
   },
   content: { paddingHorizontal: 24, paddingTop: 8 },
-  title: { color: Colors.white, fontSize: 28, fontWeight: '800', marginTop: 16, letterSpacing: 0.5 },
-  subtitle: { color: Colors.textSecondary, fontSize: 14, marginTop: 6, marginBottom: 28 },
+  title: { color: Colors.white, fontSize: 28, fontWeight: '900', marginTop: 8, letterSpacing: -0.3, textAlign: 'center' },
+  subtitle: { color: Colors.textSecondary, fontSize: 14, marginTop: 6, marginBottom: 28, textAlign: 'center' },
   errorBox: {
     backgroundColor: 'rgba(255,68,68,0.1)',
     borderRadius: 10,
@@ -270,8 +298,8 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.cardBg,
-    borderRadius: 12,
+    backgroundColor: '#0E0E0E',
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: Colors.border,
     paddingHorizontal: 14,
@@ -295,13 +323,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.cardBg,
-    borderRadius: 12,
+    backgroundColor: '#0E0E0E',
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: Colors.border,
     paddingVertical: 14,
     gap: 12,
-    marginBottom: 28,
+    marginBottom: 22,
   },
   googleIcon: {
     width: 24, height: 24, borderRadius: 12,

@@ -1,4 +1,5 @@
 import { ChatInputBar } from '@/components/ChatinputBar';
+import { PressableScale } from '@/components/ui/PressableScale';
 import { ChatMessage } from '@/components/ChatMessage';
 import { DateSeparator } from '@/components/dateSeparator';
 import { HistoryLoader } from '@/components/historyLoader';
@@ -7,11 +8,18 @@ import { ChatBackground } from '@/components/ChatBackground';
 import { InfoModal } from '@/components/infomodal';
 
 import GreenButton from '@/components/ui/GreenButton';
+import {
+  AmountHero, LiveBadge, PlayerFoundCard, RecapCard, StatusTimeline, StepDots, StepTransition,
+  SuccessCheck, SummaryChips, flowStyles, formatClock, formatDuration, type SummaryChip, type TimelineStep,
+} from '@/components/depositFlow';
+import { DEPOSIT_DESIGN_V2 } from '@/constants/featureFlags';
 import { Colors } from '@/constants/colors';
 import { getApiErrorMessage } from '@/data_api/lib/logger';
 import { DiscussionStatus } from '@/data_api/models/discussion.types';
 import { MessageType } from '@/data_api/models/message.types';
 import { Operateur } from '@/data_api/models/operateur.types';
+import { Bookmaker, DEFAULT_BOOKMAKER } from '@/data_api/models/bookmaker.types';
+import { bookmakerService } from '@/data_api/services/bookmakerService';
 import { operateurService } from '@/data_api/services/operateurService';
 import { transactionService } from '@/data_api/services/transactionService';
 import { socketService } from '@/data_api/services/socketService';
@@ -20,6 +28,7 @@ import { useAuth } from '@/hooks/useAuth';
 import type { Transaction } from '@/data_api/models/transaction.types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { dialUssd } from '@/modules/expo-ussd-dialer';
+import { hasPhonePermissions } from '@/hooks/usePhonePermissionsOnLogin';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { useChat } from '@/hooks/useChat';
 import { useChatSections } from '@/hooks/useChatSection';
@@ -39,6 +48,7 @@ import {
   ChevronLeft,
   Copy,
   ExternalLink,
+  Info,
   WifiOff,
 } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -52,7 +62,6 @@ import {
   Image,
   Linking,
   Platform,
-  PermissionsAndroid,
   RefreshControl,
   ScrollView,
   SectionList,
@@ -73,8 +82,14 @@ import Toast from 'react-native-toast-message';
 import { isValidPhoneNumber, parsePhoneNumberFromString, type CountryCode as PhoneCountryCode } from 'libphonenumber-js';
 
 type Mode = 'chat' | 'deposit' | 'withdrawal';
-type DepositStep = 1 | 2 | 3 | 4 | 5;
-type WithdrawalStep = 1 | 2 | 3;
+// 0 = choice of the bookmaker, before the operator.
+type DepositStep = 0 | 1 | 2 | 3 | 4 | 5;
+// 4 = live tracking after the request (new design only).
+type WithdrawalStep = 0 | 1 | 2 | 3 | 4;
+
+/** New design: steps slide in. Old design: rendered as is. */
+const StepWrap = ({ stepKey, children }: { stepKey: string | number; children: ReactNode }) =>
+  DEPOSIT_DESIGN_V2 ? <StepTransition stepKey={stepKey}>{children}</StepTransition> : <>{children}</>;
 const LAST_SEEN_TRANSACTIONS_KEY = 'transactions_last_seen_at';
 const LAST_USED_TRANSACTION_INPUTS_KEY = 'transaction_last_inputs:';
 
@@ -85,7 +100,10 @@ type SavedPhoneInput = {
 };
 
 type LastUsedTransactionInputs = {
+  /** Last ID used before the bookmaker choice: a 1XBET one. */
   accountId?: string;
+  /** Last ID used per bookmaker code: a 1XBET ID means nothing on MELBET. */
+  accountIdByBookmaker?: Record<string, string>;
   phoneByOperator?: Record<string, SavedPhoneInput>;
   phoneNumber?: string;
   callingCode?: string;
@@ -167,10 +185,58 @@ function OperatorImage({
   return <Image source={{ uri }} style={style} resizeMode="contain" />;
 }
 
+// Operator choice: each logo in a big white circle (the logos have a white background),
+// the name under it; the chosen one gets a green ring and a check.
+function OperatorCircles({ operators, selectedId, onSelect }: {
+  operators: { trackingId: string; nom: string; imageUrl?: string | null }[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <View style={st.circleRow}>
+      {operators.map((op) => {
+        const on = selectedId === op.trackingId;
+        return (
+          <TouchableOpacity
+            key={op.trackingId}
+            style={st.circleItem}
+            onPress={() => onSelect(op.trackingId)}
+            activeOpacity={0.85}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: on }}
+            accessibilityLabel={op.nom}
+          >
+            <View style={[st.circleRing, on && st.circleRingOn]}>
+              <View style={st.circleLogo}><OperatorImage imageUrl={op.imageUrl} style={st.operatorImage} /></View>
+              {on && <View style={st.circleCheck}><Check color="#050505" size={13} strokeWidth={3.2} /></View>}
+            </View>
+            <Text style={[st.circleName, on && { color: Colors.primaryGreen }]}>{op.nom}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+// ── Logo bookmaker (bannière 2:1 fournie par le serveur) ─────────────────────
+function BookmakerImage({ imageUrl, style }: { imageUrl?: string | null; style?: object }) {
+  const uri = useFileUrl('bookmakers', imageUrl);
+  if (!uri) return <View style={[style, { backgroundColor: Colors.border }]} />;
+  return <Image source={{ uri }} style={style} resizeMode="cover" />;
+}
+
 export default function DepositWithdrawalScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { initialMode } = useLocalSearchParams<{ initialMode?: string }>();
   const { transactionId: incomingTransactionId } = useLocalSearchParams<{ transactionId?: string }>();
+  // Quick deposit from the home card: replays the last deposit with a new amount.
+  const quick = useLocalSearchParams<{
+    quickOperator?: string;
+    quickBookmaker?: string;
+    quickPhone?: string;
+    quickAccount?: string;
+    quickAmount?: string;
+  }>();
   const { user } = useAuth();
 
   const {
@@ -188,8 +254,8 @@ export default function DepositWithdrawalScreen() {
   } = useChat(id);
 
   const [mode, setMode] = useState<Mode>('chat');
-  const [depositStep, setDepositStep] = useState<DepositStep>(1);
-  const [withdrawalStep, setWithdrawalStep] = useState<WithdrawalStep>(1);
+  const [depositStep, setDepositStep] = useState<DepositStep>(0);
+  const [withdrawalStep, setWithdrawalStep] = useState<WithdrawalStep>(0);
   const [lastUsedInputs, setLastUsedInputs] = useState<LastUsedTransactionInputs | null>(null);
 
   useEffect(() => {
@@ -211,8 +277,16 @@ export default function DepositWithdrawalScreen() {
     return () => { active = false; };
   }, [user?.trackingId]);
 
-  const rememberTransactionInputs = useCallback(async (inputs: LastUsedTransactionInputs, selectedOperatorId: string) => {
+  const rememberTransactionInputs = useCallback(async (
+    inputs: LastUsedTransactionInputs,
+    selectedOperatorId: string,
+    selectedBookmakerCode: string,
+  ) => {
     if (!user?.trackingId) return;
+    const accountIdByBookmaker = { ...(lastUsedInputs?.accountIdByBookmaker ?? {}) };
+    if (selectedBookmakerCode && inputs.accountId?.trim()) {
+      accountIdByBookmaker[selectedBookmakerCode] = inputs.accountId.trim();
+    }
     const phoneByOperator = { ...(lastUsedInputs?.phoneByOperator ?? {}) };
     if (selectedOperatorId && inputs.phoneNumber?.trim()) {
       phoneByOperator[selectedOperatorId] = {
@@ -225,6 +299,7 @@ export default function DepositWithdrawalScreen() {
       ...lastUsedInputs,
       ...inputs,
       phoneByOperator,
+      accountIdByBookmaker,
       accountId: inputs.accountId?.trim(),
       phoneNumber: inputs.phoneNumber?.trim(),
     };
@@ -260,6 +335,30 @@ export default function DepositWithdrawalScreen() {
     loadOperators();
   }, [loadOperators]);
 
+  // ── Bookmakers depuis l'API (nom, logo, liens, actif) ─────────────────
+  const [bookmakers, setBookmakers] = useState<Bookmaker[]>([]);
+  const [loadingBookmakers, setLoadingBookmakers] = useState(false);
+  const [bookmakerCode, setBookmakerCode] = useState('');
+
+  const loadBookmakers = useCallback(() => {
+    setLoadingBookmakers(true);
+    bookmakerService
+      .getAll()
+      .then((items) => {
+        setBookmakers(items);
+        items
+          .map((bookmaker) => resolveFileUrl('bookmakers', bookmaker.imageUrl))
+          .filter(Boolean)
+          .forEach((url) => { void Image.prefetch(url).catch(() => false); });
+      })
+      .catch(() => setBookmakers([]))
+      .finally(() => setLoadingBookmakers(false));
+  }, []);
+
+  useEffect(() => {
+    loadBookmakers();
+  }, [loadBookmakers]);
+
   const [operatorId, setOperatorId] = useState('');
   const selectOperator = useCallback((nextOperatorId: string) => {
     if (nextOperatorId === operatorId) return;
@@ -286,7 +385,14 @@ export default function DepositWithdrawalScreen() {
 
   // ── Dépôt — ID de compte ─────────────────────────────────────────────────
   const [accountId, setAccountId] = useState('');
-  const depositPlayerValidation = useServculPlayerValidation(accountId);
+  const selectedBookmaker = bookmakers.find((bookmaker) => bookmaker.code === bookmakerCode);
+  // Name used in texts; a transaction reopened from a notification keeps its own bookmaker.
+  const bookmakerName = selectedBookmaker?.nom || bookmakerCode || DEFAULT_BOOKMAKER;
+  const lastAccountId = bookmakerCode
+    ? lastUsedInputs?.accountIdByBookmaker?.[bookmakerCode]
+      ?? (bookmakerCode === DEFAULT_BOOKMAKER ? lastUsedInputs?.accountId : undefined)
+    : undefined;
+  const depositPlayerValidation = useServculPlayerValidation(accountId, bookmakerCode, bookmakerName);
 
   // ── Retrait — téléphone avec sélecteur de pays ───────────────────────────
   const [wCountryCode, setWCountryCode] = useState<CountryCode>('TG');
@@ -296,7 +402,19 @@ export default function DepositWithdrawalScreen() {
   const withdrawalPhone = `+${wCallingCode}${wPhoneNumber.replace(/\D/g, '')}`;
   const withdrawalPhoneValid = isPhoneValidForCountry(wPhoneNumber, wCountryCode);
   const [withdrawalAccountId, setWithdrawalAccountId] = useState('');
-  const withdrawalPlayerValidation = useServculPlayerValidation(withdrawalAccountId);
+  const withdrawalPlayerValidation = useServculPlayerValidation(withdrawalAccountId, bookmakerCode, bookmakerName);
+
+  const selectBookmaker = useCallback((bookmaker: Bookmaker) => {
+    if (!bookmaker.active) {
+      Toast.show({ type: 'info', text1: `${bookmaker.nom} arrive bientôt`, text2: 'Ce bookmaker n’est pas encore disponible.' });
+      return;
+    }
+    if (bookmaker.code === bookmakerCode) return;
+    setBookmakerCode(bookmaker.code);
+    // An account ID belongs to one bookmaker.
+    setAccountId('');
+    setWithdrawalAccountId('');
+  }, [bookmakerCode]);
 
   // Restore only the phone saved for the currently selected operator.
   useEffect(() => {
@@ -321,6 +439,8 @@ export default function DepositWithdrawalScreen() {
   const [processing, setProcessing] = useState(false);
   const [cancellingDeposit, setCancellingDeposit] = useState(false);
   const [manualDialOpened, setManualDialOpened] = useState(false);
+  // New design: the validated deposit, shown on the success screen.
+  const [depositSucceeded, setDepositSucceeded] = useState<Transaction | null>(null);
   const [paymentCodeCopied, setPaymentCodeCopied] = useState(false);
   const [showCancelDepositSheet, setShowCancelDepositSheet] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -332,6 +452,7 @@ export default function DepositWithdrawalScreen() {
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [hasUnseenTransaction, setHasUnseenTransaction] = useState(false);
   const [depositCaptureAvailable, setDepositCaptureAvailable] = useState(false);
+  const [captureStatusChecked, setCaptureStatusChecked] = useState(false);
   const listRef = useRef<SectionList>(null);
   const audio = useAudioRecorder();
 
@@ -374,6 +495,7 @@ export default function DepositWithdrawalScreen() {
     transactionService.getById(incomingTransactionId)
       .then((loadedTransaction) => {
         setTransaction(loadedTransaction);
+        setBookmakerCode(loadedTransaction.bookmaker || DEFAULT_BOOKMAKER);
         setMode('deposit');
         setDepositStep(5);
         setProcessing(
@@ -388,7 +510,8 @@ export default function DepositWithdrawalScreen() {
     let cancelled = false;
     const refreshCaptureStatus = () => transactionService.getCaptureStatus()
       .then((status) => { if (!cancelled) setDepositCaptureAvailable(status.available); })
-      .catch(() => { if (!cancelled) setDepositCaptureAvailable(false); });
+      .catch(() => { if (!cancelled) setDepositCaptureAvailable(false); })
+      .finally(() => { if (!cancelled) setCaptureStatusChecked(true); });
     void refreshCaptureStatus();
     const captureTimer = setInterval(refreshCaptureStatus, 20_000);
     (async () => {
@@ -407,8 +530,8 @@ export default function DepositWithdrawalScreen() {
   }, []));
 
   const currentOperator = operators.find((o) => o.trackingId === operatorId);
-  const depositProgressStep = depositStep === 1 ? 1 : depositStep === 4 ? 2 : depositStep === 5 ? 4 : 3;
-  const depositProgressLabels = ['Bookmaker', 'Compte', 'Paiement', 'Code'];
+  const depositProgressStep = depositStep === 0 ? 1 : depositStep === 1 ? 2 : depositStep === 4 ? 3 : depositStep === 5 ? 5 : 4;
+  const depositProgressLabels = ['Bookmaker', 'Opérateur', 'Compte', 'Paiement', 'Code'];
   const paymentProgressStep = transaction?.creditError
     ? 2
     : transaction?.statut === 'VALIDEE'
@@ -465,7 +588,7 @@ export default function DepositWithdrawalScreen() {
       throw new Error('Vérifiez le format du numéro pour le pays sélectionné.');
     }
     if (depositPlayerValidation.player?.userId !== Number(accountId.trim())) {
-      throw new Error('Vérifiez votre compte 1XBET avant de continuer.');
+      throw new Error(`Vérifiez votre compte ${bookmakerName} avant de continuer.`);
     }
     if (transaction) return transaction;
     if (!currentOperator) throw new Error('Opérateur introuvable');
@@ -475,6 +598,7 @@ export default function DepositWithdrawalScreen() {
         type: 'DEPOT',
         montant: parseAmount(amount),
         operateur: currentOperator.nom,
+        bookmaker: bookmakerCode,
         numeroTelephone: phone,
         compteDestinataire: accountId.trim(),
       });
@@ -483,13 +607,13 @@ export default function DepositWithdrawalScreen() {
         phoneNumber,
         callingCode,
         countryCode,
-      }, currentOperator.trackingId);
+      }, currentOperator.trackingId, bookmakerCode);
       setTransaction(created);
       return created;
     } finally {
       setCreatingTransaction(false);
     }
-  }, [accountId, amount, callingCode, countryCode, currentOperator, depositPhoneValid, depositPlayerValidation.player, phone, rememberTransactionInputs, transaction]);
+  }, [accountId, amount, bookmakerCode, bookmakerName, callingCode, countryCode, currentOperator, depositPhoneValid, depositPlayerValidation.player, phone, rememberTransactionInputs, transaction]);
 
   const prepareDeposit = async () => {
     if (!depositCaptureAvailable) {
@@ -497,7 +621,7 @@ export default function DepositWithdrawalScreen() {
       return;
     }
     if (depositPlayerValidation.player?.userId !== Number(accountId.trim())) {
-      Alert.alert('ID 1XBET non vérifié', 'Vérifiez votre compte 1XBET avant de continuer.');
+      Alert.alert(`ID ${bookmakerName} non vérifié`, `Vérifiez votre compte ${bookmakerName} avant de continuer.`);
       return;
     }
     setDepositStep(2);
@@ -565,57 +689,50 @@ export default function DepositWithdrawalScreen() {
       });
     };
 
+    // Phone permissions are asked once at login (usePhonePermissionsOnLogin), never here.
+    const canDialItself = Platform.OS === 'android' && await hasPhonePermissions();
+
     try {
+      await createDepositTransaction();
+    } catch (error) {
+      setProcessing(false);
+      const depositError = getDepositCreationError(error);
+      Toast.show({
+        type: 'error',
+        text1: depositError.title,
+        text2: depositError.message,
+      });
+      return;
+    }
+
+    // Without the permissions (or on iOS), open the phone's dialer with the code filled in.
+    const openDialer = async () => {
+      // iOS may refuse to prefill USSD strings containing * or # through tel:.
+      // Keep the code in the clipboard so the user can paste it in Phone if needed.
+      Clipboard.setString(code);
+      await Linking.openURL(`tel:${encodeURIComponent(code)}`);
+      setManualDialOpened(true);
       if (Platform.OS === 'android') {
-        const permission = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.CALL_PHONE,
-          {
-            title: 'Autorisation requise',
-            message: "Matistore a besoin d'effectuer l'appel USSD pour votre dépôt.",
-            buttonPositive: 'Autoriser',
-            buttonNegative: 'Refuser',
-          },
-        );
-        if (permission !== PermissionsAndroid.RESULTS.GRANTED) {
-          throw new Error('Autorisation d’appel refusée. Autorisez CALL_PHONE pour lancer le code depuis MatiStore.');
-        }
-        const phoneStatePermission = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
-          {
-            title: 'Choix de la carte SIM',
-            message: 'MatiStore a besoin de voir les cartes SIM disponibles pour vous laisser choisir celle du paiement.',
-            buttonPositive: 'Autoriser',
-            buttonNegative: 'Refuser',
-          },
-        );
-        if (phoneStatePermission !== PermissionsAndroid.RESULTS.GRANTED) {
-          throw new Error('Autorisez l’accès aux cartes SIM pour choisir celle du paiement.');
-        }
+        Toast.show({ type: 'info', text1: 'Code prêt dans votre téléphone', text2: 'Appuyez sur Appeler pour payer. Nous vérifions ensuite votre paiement.' });
       }
+    };
 
+    try {
+      if (!canDialItself) {
+        await openDialer();
+        return;
+      }
       try {
-        await createDepositTransaction();
+        await dialUssd(code);
       } catch (error) {
-        setProcessing(false);
-        const depositError = getDepositCreationError(error);
-        Toast.show({
-          type: 'error',
-          text1: depositError.title,
-          text2: depositError.message,
-        });
-        return;
+        const nativeCode = (error as { code?: string } | null)?.code ?? '';
+        const message = error instanceof Error ? error.message : '';
+        if (/PERMISSION|USSD_UNAVAILABLE/.test(nativeCode) || /PERMISSION|USSD_UNAVAILABLE/i.test(message)) {
+          await openDialer();
+          return;
+        }
+        throw error;
       }
-
-      if (Platform.OS === 'ios') {
-        // iOS may refuse to prefill USSD strings containing * or # through tel:.
-        // Keep the code in the clipboard so the user can paste it in Phone if needed.
-        Clipboard.setString(code);
-        await Linking.openURL(`tel:${encodeURIComponent(code)}`);
-        setManualDialOpened(true);
-        return;
-      }
-
-      await dialUssd(code);
     } catch (error) {
       resetAfterUssdFailure(error);
     }
@@ -658,6 +775,51 @@ export default function DepositWithdrawalScreen() {
     }
   };
 
+  // ── Dépôt rapide : préremplit tout, vérifie l'ID, puis lance le paiement ──
+  const quickAppliedRef = useRef(false);
+  const [quickPending, setQuickPending] = useState(false);
+
+  useEffect(() => {
+    if (quickAppliedRef.current || !quick.quickOperator || incomingTransactionId) return;
+    if (!operators.length || !bookmakers.length) return;
+    quickAppliedRef.current = true;
+    const op = operators.find((o) => o.nom === quick.quickOperator);
+    const bk = bookmakers.find((b) => b.code === (quick.quickBookmaker || DEFAULT_BOOKMAKER));
+    if (!op || !bk?.active) {
+      Toast.show({ type: 'info', text1: 'Dépôt rapide indisponible', text2: 'Refaites un dépôt complet.' });
+      return;
+    }
+    const parsed = parsePhoneNumberFromString(quick.quickPhone ?? '');
+    setMode('deposit');
+    setBookmakerCode(bk.code);
+    setOperatorId(op.trackingId);
+    if (parsed?.country) {
+      setCountryCode(parsed.country as CountryCode);
+      setCallingCode(parsed.countryCallingCode);
+      setPhoneNumber(parsed.formatNational());
+    }
+    setAccountId(quick.quickAccount ?? '');
+    setAmount(formatAmountInput(quick.quickAmount ?? ''));
+    // The account step shows the ID check; on any problem the client continues from there.
+    setDepositStep(4);
+    setQuickPending(true);
+  }, [bookmakers, incomingTransactionId, operators, quick.quickAccount, quick.quickAmount, quick.quickBookmaker, quick.quickOperator, quick.quickPhone]);
+
+  useEffect(() => {
+    if (!quickPending || depositPlayerValidation.checking || !captureStatusChecked) return;
+    if (depositPlayerValidation.error) { setQuickPending(false); return; }
+    if (depositPlayerValidation.player?.userId !== Number(accountId.trim())) return;
+    setQuickPending(false);
+    if (!currentOperator || !depositPhoneValid || parseAmount(amount) < 300) return;
+    if (!depositCaptureAvailable) {
+      Alert.alert('Dépôts temporairement indisponibles', 'Le service de vérification des paiements est temporairement indisponible. Réessayez un peu plus tard.');
+      return;
+    }
+    setDepositStep(5);
+    // A browser can't dial: there the client copies the code from the payment step.
+    if (Platform.OS !== 'web') void beginDeposit();
+  }, [quickPending, depositPlayerValidation.checking, depositPlayerValidation.error, depositPlayerValidation.player, captureStatusChecked]);
+
   const stopTransactionPolling = useCallback(() => {
     if (pollRef.current) {
       clearInterval(pollRef.current);
@@ -682,7 +844,7 @@ export default function DepositWithdrawalScreen() {
       return;
     }
     if (withdrawalPlayerValidation.player?.userId !== Number(withdrawalAccountId.trim())) {
-      Alert.alert('ID 1XBET non vérifié', 'Vérifiez votre compte 1XBET avant de continuer.');
+      Alert.alert(`ID ${bookmakerName} non vérifié`, `Vérifiez votre compte ${bookmakerName} avant de continuer.`);
       return;
     }
     setWithdrawalSubmitting(true);
@@ -690,6 +852,7 @@ export default function DepositWithdrawalScreen() {
       const created = await transactionService.create({
         type: 'RETRAIT',
         operateur: currentOperator.nom,
+        bookmaker: bookmakerCode,
         compteDestinataire: withdrawalAccountId.trim(),
         numeroTelephone: withdrawalPhone,
         codeRetrait: withdrawalCode.trim(),
@@ -699,23 +862,28 @@ export default function DepositWithdrawalScreen() {
         phoneNumber: wPhoneNumber,
         callingCode: wCallingCode,
         countryCode: wCountryCode,
-      }, currentOperator.trackingId);
+      }, currentOperator.trackingId, bookmakerCode);
       setTransaction(created);
       try {
         await sendText(
         `📤 *Demande de retrait*\n` +
-        `Code 1xBet : ${withdrawalCode}\n` +
+        `Code ${bookmakerName} : ${withdrawalCode}\n` +
         `Numéro: ${withdrawalPhone}`,
           DiscussionStatus.RETRAIT
         );
       } catch {
         // Transaction créée côté serveur; l'échec du message chat ne doit pas annuler la demande.
       }
+      if (DEPOSIT_DESIGN_V2 && created.statut === 'EN_ATTENTE_ADMIN') {
+        // New design: live tracking instead of the popup.
+        setWithdrawalStep(4);
+        return;
+      }
       setWithdrawalNotice(created.statut === 'EN_ATTENTE_ADMIN'
         ? {
           type: 'success',
-          title: 'Débit 1XBET confirmé',
-          message: `Votre compte 1XBET a été débité${created.montant > 0 ? ` de ${created.montant.toLocaleString('fr-FR')} FCFA` : ''}. Patientez pendant la préparation de l’envoi au numéro indiqué.`,
+          title: `Débit ${bookmakerName} confirmé`,
+          message: `Votre compte ${bookmakerName} a été débité${created.montant > 0 ? ` de ${created.montant.toLocaleString('fr-FR')} FCFA` : ''}. Patientez pendant la préparation de l’envoi au numéro indiqué.`,
         }
         : {
           type: 'error',
@@ -737,11 +905,12 @@ export default function DepositWithdrawalScreen() {
   const resetForm = useCallback(() => {
     stopTransactionPolling();
     setMode('chat');
-    setDepositStep(1);
+    setDepositStep(0);
     setProcessing(false);
     setManualDialOpened(false);
     setPaymentCodeCopied(false);
-    setWithdrawalStep(1);
+    setWithdrawalStep(0);
+    setBookmakerCode('');
     setOperatorId('');
     setAmount('');
     // Dépôt téléphone
@@ -758,6 +927,7 @@ export default function DepositWithdrawalScreen() {
     // Retrait code
     setWithdrawalCode('');
     setTransaction(null);
+    setDepositSucceeded(null);
   }, [stopTransactionPolling]);
 
   const cancelDeposit = async () => {
@@ -807,10 +977,11 @@ export default function DepositWithdrawalScreen() {
             stopTransactionPolling();
             if (successNoticeShownRef.current !== updated.trackingId) {
               successNoticeShownRef.current = updated.trackingId;
-              setWithdrawalNotice({
+              if (DEPOSIT_DESIGN_V2) setDepositSucceeded(updated);
+              else setWithdrawalNotice({
                 type: 'success',
                 title: 'Dépôt crédité',
-                message: `Votre dépôt de ${updated.montant} FCFA a été crédité sur votre compte 1XBET.\nNuméro : ${updated.numeroTelephone || '—'}${updated.referencePaiement ? `\nRéférence : ${updated.referencePaiement}` : ''}`,
+                message: `Votre dépôt de ${updated.montant} FCFA a été crédité sur votre compte ${updated.bookmaker || bookmakerName}.\nNuméro : ${updated.numeroTelephone || '—'}${updated.referencePaiement ? `\nRéférence : ${updated.referencePaiement}` : ''}`,
               });
             }
           } else if (updated.creditError) {
@@ -860,10 +1031,11 @@ export default function DepositWithdrawalScreen() {
           stopTransactionPolling();
           if (successNoticeShownRef.current !== updated.trackingId) {
             successNoticeShownRef.current = updated.trackingId;
-            setWithdrawalNotice({
+            if (DEPOSIT_DESIGN_V2) setDepositSucceeded(updated);
+            else setWithdrawalNotice({
               type: 'success',
               title: 'Dépôt crédité',
-              message: `Votre dépôt de ${updated.montant} FCFA a été crédité sur votre compte 1XBET.\nNuméro : ${updated.numeroTelephone || '—'}${updated.referencePaiement ? `\nRéférence : ${updated.referencePaiement}` : ''}`,
+              message: `Votre dépôt de ${updated.montant} FCFA a été crédité sur votre compte ${updated.bookmaker || bookmakerName}.\nNuméro : ${updated.numeroTelephone || '—'}${updated.referencePaiement ? `\nRéférence : ${updated.referencePaiement}` : ''}`,
             });
           }
         } else if (updated.creditError) {
@@ -895,16 +1067,172 @@ export default function DepositWithdrawalScreen() {
     return stopTransactionPolling;
   }, [mode, pollingTransactionId, resetForm, stopTransactionPolling]);
 
-  // ── Ouvrir le composeur USSD ─────────────────────────────────────────────
-  // ── Ouvrir 1xBet ────────────────────────────────────────────────────────
-  const open1xBet = async () => {
-    // A browser cannot open the 1xBet app: open the 1xBet website in a new tab instead.
-    if (Platform.OS === 'web') {
-      window.open('https://1xbet.com', '_blank');
+  // ── Nouveau design : suivi en direct du retrait ─────────────────────────
+  const trackingWithdrawalId = DEPOSIT_DESIGN_V2 && mode === 'withdrawal' && withdrawalStep === 4
+    ? transaction?.trackingId
+    : undefined;
+  useEffect(() => {
+    if (!trackingWithdrawalId) return;
+    let stopped = false;
+    const socket = socketService.getSocket();
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const stop = () => {
+      stopped = true;
+      if (timer) clearInterval(timer);
+      socket?.off('transactionStatusChanged', onChange);
+    };
+    const refresh = () => transactionService.getById(trackingWithdrawalId)
+      .then((updated) => {
+        if (stopped) return;
+        setTransaction(updated);
+        if (['VALIDEE', 'REJETEE', 'ANNULEE'].includes(updated.statut)) stop();
+      })
+      .catch(() => { /* next tick retries */ });
+    const onChange = (event: { transactionId?: string; trackingId?: string }) => {
+      if ((event.transactionId ?? event.trackingId) === trackingWithdrawalId) void refresh();
+    };
+    timer = setInterval(refresh, 5000);
+    socket?.on('transactionStatusChanged', onChange);
+    return stop;
+  }, [trackingWithdrawalId]);
+
+  // ── Nouveau design : heure de chaque étape franchie du dépôt ───────────
+  const [depositStageTimes, setDepositStageTimes] = useState<Record<number, string>>({});
+  const stageTransactionId = transaction?.type === 'DEPOT' ? transaction.trackingId : undefined;
+  useEffect(() => {
+    if (!stageTransactionId) { setDepositStageTimes({}); return; }
+    setDepositStageTimes((times) => (times[paymentProgressStep]
+      ? times
+      : { ...times, [paymentProgressStep]: new Date().toISOString() }));
+  }, [paymentProgressStep, stageTransactionId]);
+
+  // "Le paiement tarde" appears 5 minutes after the deposit was created.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    if (!DEPOSIT_DESIGN_V2 || mode !== 'deposit' || !stageTransactionId) return;
+    const timer = setInterval(() => setNowTick(Date.now()), 15_000);
+    return () => clearInterval(timer);
+  }, [mode, stageTransactionId]);
+  const depositIsLate = !!transaction
+    && paymentProgressStep === 1
+    && ['EN_ATTENTE_AUTO', 'EN_VERIFICATION', 'EN_ATTENTE_PREUVE'].includes(transaction.statut)
+    && nowTick - new Date(transaction.createdAt).getTime() > 5 * 60_000;
+
+  const depositTimeline: TimelineStep[] = (() => {
+    const t = transaction;
+    const reached = t ? paymentProgressStep : 0;
+    const time = (step: number) => formatClock(depositStageTimes[step]);
+    return [
+      {
+        label: paymentCodeCopied ? 'Code copié' : 'Code lancé',
+        state: t ? 'done' : 'active',
+        sub: t ? null : 'Touchez « Effectuer le paiement » ci-dessous',
+        time: t ? formatClock(t.createdAt) : null,
+      },
+      {
+        label: 'Paiement reçu',
+        state: reached >= 2 ? 'done' : t ? 'active' : 'todo',
+        sub: t?.referencePaiement
+          ? `Réf. ${currentOperator?.nom ?? ''} ${t.referencePaiement}`
+          : t ? `En attente de votre paiement ${currentOperator?.nom ?? ''}…` : null,
+        time: reached >= 2 ? time(2) ?? time(reached) : null,
+      },
+      {
+        label: t?.creditError ? 'Crédit à vérifier' : 'Crédit en cours',
+        state: t?.creditError ? 'error' : reached >= 4 ? 'done' : reached >= 2 ? 'active' : 'todo',
+        sub: t?.creditError
+          ? 'Notre équipe vérifie votre paiement.'
+          : reached === 2 || reached === 3 ? `Nous rechargeons votre compte ${bookmakerName}…` : null,
+        time: reached >= 4 ? time(4) : null,
+      },
+      {
+        label: 'Compte crédité',
+        state: reached >= 4 ? 'done' : 'todo',
+        time: reached >= 4 ? formatClock(t?.dateValidation) ?? time(4) : null,
+      },
+    ];
+  })();
+
+  const withdrawalTimeline: TimelineStep[] = (() => {
+    const t = transaction;
+    const refused = t?.statut === 'REJETEE' || t?.statut === 'ANNULEE';
+    const done = t?.statut === 'VALIDEE';
+    const third: TimelineStep = refused
+      ? { label: t?.statut === 'ANNULEE' ? 'Retrait annulé' : 'Retrait refusé', state: 'error', sub: t?.motifRejet || 'Écrivez-nous dans la discussion.' }
+      : { label: done ? 'Argent envoyé' : 'Envoi en cours', state: done ? 'done' : 'active', sub: done ? null : `Nous envoyons l’argent sur votre ${currentOperator?.nom ?? 'Mobile Money'}…` };
+    return [
+      { label: 'Demande envoyée', state: 'done', time: formatClock(t?.createdAt) },
+      {
+        label: `Code ${bookmakerName} vérifié`,
+        state: 'done',
+        sub: t?.montant ? `Compte débité de ${t.montant.toLocaleString('fr-FR')} FCFA` : null,
+        time: formatClock(t?.createdAt),
+      },
+      third,
+      { label: 'Retrait reçu', state: done ? 'done' : 'todo', time: done ? formatClock(t?.dateValidation ?? t?.updatedAt) : null },
+    ];
+  })();
+
+  // Chips of what is already chosen; touching one goes back to that step (until the deposit is created).
+  const depositChips: SummaryChip[] = [];
+  if (depositStep !== 0 && selectedBookmaker) {
+    depositChips.push({ key: 'bk', label: selectedBookmaker.nom, onPress: transaction ? undefined : () => setDepositStep(0) });
+  }
+  if ([4, 2, 3, 5].includes(depositStep) && currentOperator) {
+    depositChips.push({ key: 'op', label: currentOperator.nom, onPress: transaction ? undefined : () => setDepositStep(1) });
+  }
+  if ([2, 3, 5].includes(depositStep) && accountId.trim()) {
+    depositChips.push({ key: 'id', label: `ID ${accountId.trim()}`, onPress: transaction ? undefined : () => setDepositStep(4) });
+  }
+  // Dot index → deposit step (amount and number share one screen in the new design).
+  const depositDotSteps: DepositStep[] = [0, 1, 4, 2, 5];
+
+  const withdrawalChips: SummaryChip[] = [];
+  if (withdrawalStep > 0 && withdrawalStep < 4 && selectedBookmaker) {
+    withdrawalChips.push({ key: 'bk', label: selectedBookmaker.nom, onPress: () => setWithdrawalStep(0) });
+  }
+  if (withdrawalStep > 1 && withdrawalStep < 4 && currentOperator) {
+    withdrawalChips.push({ key: 'op', label: currentOperator.nom, onPress: () => setWithdrawalStep(1) });
+  }
+  if (withdrawalStep === 3 && withdrawalAccountId.trim()) {
+    withdrawalChips.push({ key: 'id', label: `ID ${withdrawalAccountId.trim()}`, onPress: () => setWithdrawalStep(2) });
+  }
+
+  // New design: "Payer" launches the payment right away (on the web, it shows the code to copy).
+  const payNow = async () => {
+    const parsedAmount = parseAmount(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount < 300) {
+      Alert.alert('Montant invalide', 'Le montant minimum de dépôt est de 300 FCFA.');
       return;
     }
-    const appSchemes = ['xbet://open', 'xbet://openapp'];
-    for (const scheme of appSchemes) {
+    if (!depositPhoneValid) {
+      Toast.show({ type: 'error', text1: 'Numéro invalide', text2: 'Vérifiez le format du numéro pour le pays sélectionné.' });
+      return;
+    }
+    if (Platform.OS === 'web') {
+      await createDepositAndContinue();
+      return;
+    }
+    setDepositStep(5);
+    void beginDeposit();
+  };
+
+  const payFromAnotherPhone = () => {
+    if (!depositPhoneValid || parseAmount(amount) < 300) return;
+    setDepositStep(5);
+    void copyDepositCode();
+  };
+
+  // ── Ouvrir le composeur USSD ─────────────────────────────────────────────
+  // ── Ouvrir le bookmaker (liens fournis par le serveur) ─────────────────
+  const openBookmaker = async () => {
+    const siteUrl = selectedBookmaker?.siteUrl;
+    // A browser cannot open the bookmaker's app: open its website in a new tab instead.
+    if (Platform.OS === 'web') {
+      if (siteUrl) window.open(siteUrl, '_blank');
+      return;
+    }
+    for (const scheme of selectedBookmaker?.appSchemes ?? []) {
       try {
         const canOpen = await Linking.canOpenURL(scheme);
         if (canOpen) {
@@ -913,13 +1241,275 @@ export default function DepositWithdrawalScreen() {
         }
       } catch { }
     }
+    if (siteUrl) {
+      try {
+        await Linking.openURL(siteUrl);
+        return;
+      } catch { }
+    }
     Alert.alert(
-      "Impossible d'ouvrir 1xBet",
-      "Veuillez ouvrir l'application 1xBet manuellement.",
+      `Impossible d'ouvrir ${bookmakerName}`,
+      `Veuillez ouvrir l'application ${bookmakerName} manuellement.`,
     );
   };
   const insets = useSafeAreaInsets();
   const wide = useWideWeb();
+
+  // ── Étape 0 (dépôt et retrait) : choix du bookmaker ────────────────────
+  const renderBookmakerStep = (onNext: () => void) => (
+    <>
+      <Text style={st.pageTitle}>Choisir le bookmaker</Text>
+      <Text style={st.pageSubtitle}>Sur quel compte voulez-vous faire l’opération ?</Text>
+      {loadingBookmakers ? (
+        <ActivityIndicator color={Colors.primaryGreen} style={{ marginVertical: 32 }} />
+      ) : bookmakers.length === 0 ? (
+        <View style={st.connectionErrorBox}>
+          <WifiOff color="#f59e0b" size={22} />
+          <Text style={st.connectionErrorText}>
+            Veuillez vérifier votre connexion pour pouvoir utiliser cette fonctionnalité.
+          </Text>
+          <TouchableOpacity style={st.retryBtn} onPress={loadBookmakers} activeOpacity={0.8}>
+            <Text style={st.retryBtnText}>Réessayer</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={st.bookmakerGrid}>
+          {bookmakers.map((bookmaker) => {
+            const selected = bookmaker.code === bookmakerCode;
+            return (
+              <TouchableOpacity
+                key={bookmaker.code}
+                style={[
+                  st.bookmakerCard,
+                  selected && st.bookmakerCardActive,
+                  !bookmaker.active && st.bookmakerCardInactive,
+                ]}
+                onPress={() => selectBookmaker(bookmaker)}
+                activeOpacity={bookmaker.active ? 0.8 : 1}
+                accessibilityRole="button"
+                accessibilityState={{ selected, disabled: !bookmaker.active }}
+                accessibilityLabel={bookmaker.active ? bookmaker.nom : `${bookmaker.nom}, bientôt disponible`}
+              >
+                <BookmakerImage imageUrl={bookmaker.imageUrl} style={st.bookmakerImage} />
+                <View style={st.bookmakerCardFooter}>
+                  <Text style={st.bookmakerCardName}>{bookmaker.nom}</Text>
+                  {!bookmaker.active && <Text style={st.bookmakerSoonBadge}>Bientôt</Text>}
+                </View>
+                {selected && (
+                  <View style={st.operatorCheckBadge}>
+                    <Check color="#fff" size={12} strokeWidth={3} />
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+      <GreenButton
+        title="Suivant →"
+        onPress={() => { if (selectedBookmaker?.active) onNext(); }}
+        disabled={!selectedBookmaker?.active || loadingBookmakers}
+        style={st.pageBtn}
+      />
+    </>
+  );
+
+  // ─── Nouveau design (DEPOSIT_DESIGN_V2) ──────────────────────────────────
+  const renderAmountAndNumber = () => {
+    const value = parseAmount(amount);
+    const amountOk = Number.isFinite(value) && value >= 300;
+    const savedPhone = operatorId ? lastUsedInputs?.phoneByOperator?.[operatorId]?.phoneNumber : undefined;
+    return (
+      <>
+        {/* Same look as the amount step before the redesign: a plain input box, no card around it. */}
+        <Text style={st.pageTitle}>Montant du dépôt</Text>
+        <Text style={st.pageSubtitle}>Entrez le montant en FCFA</Text>
+        <View>
+          <View style={st.amountInputWrap}>
+            <TextInput
+              style={st.amountInput}
+              placeholder="0"
+              placeholderTextColor={Colors.textSecondary}
+              value={amount}
+              onChangeText={(text) => setAmount(formatAmountInput(text))}
+              maxLength={9}
+              keyboardType="numeric"
+              accessibilityLabel="Montant à déposer"
+            />
+            <Text style={st.amountCurrency}>FCFA</Text>
+          </View>
+          <View style={st.chips}>
+            {['1 000', '2 000', '5 000', '10 000', '25 000'].map((v) => (
+              <TouchableOpacity key={v} style={[st.chip, amount === v && st.chipActive]} onPress={() => setAmount(v)}>
+                <Text style={[st.chipText, amount === v && st.chipTextActive]}>{v}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {!!amount && !amountOk && <Text style={st.errorText}>Le montant minimum est de 300 FCFA</Text>}
+        </View>
+
+        <View style={{ marginTop: 22, gap: 10 }}>
+          <Text style={[st.pageSubtitle, { marginBottom: 0 }]}>Numéro {currentOperator?.nom} qui paie</Text>
+          <View style={st.phoneInputWrap}>
+            <TouchableOpacity style={st.countrySelector} onPress={() => setShowDepositPicker(true)} activeOpacity={0.7}>
+              <CountryPicker
+                countryCode={countryCode}
+                withFlag
+                withEmoji
+                withFilter
+                withCallingCode
+                withAlphaFilter
+                theme={DARK_THEME}
+                onSelect={(country: Country) => {
+                  setCountryCode(country.cca2);
+                  setCallingCode(country.callingCode[0]);
+                  setShowDepositPicker(false);
+                }}
+                visible={showDepositPicker}
+                onClose={() => setShowDepositPicker(false)}
+                containerButtonStyle={st.pickerHidden}
+              />
+              <Text style={st.callingCodeText}>+{callingCode}</Text>
+              <ChevronDown color={Colors.textSecondary} size={14} />
+            </TouchableOpacity>
+            <View style={st.phoneDivider} />
+            <TextInput
+              style={st.phoneInput}
+              placeholder="XX XX XX XX"
+              placeholderTextColor={Colors.textSecondary}
+              value={phoneNumber}
+              onChangeText={setPhoneNumber}
+              onBlur={() => setPhoneNumber((v) => formatPhoneForCountry(v, countryCode))}
+              keyboardType="phone-pad"
+            />
+            {depositPhoneValid && <CheckCircle2 color={Colors.primaryGreen} size={20} style={st.phoneValidIcon} />}
+          </View>
+          {!!phoneNumber.trim() && !depositPhoneValid && (
+            <Text style={st.phoneValidationError}>Numéro invalide pour le pays sélectionné.</Text>
+          )}
+          {!!savedPhone && savedPhone === phoneNumber.trim() && (
+            <Text style={flowStyles.hint}>Repris de votre dernier dépôt {currentOperator?.nom}.</Text>
+          )}
+        </View>
+
+        <GreenButton
+          title={creatingTransaction ? 'Création du dépôt...' : amountOk ? `Payer ${formatAmountInput(String(value))} FCFA` : 'Payer'}
+          onPress={() => void payNow()}
+          disabled={!amountOk || !depositPhoneValid || creatingTransaction}
+          style={st.pageBtn}
+        />
+        {Platform.OS === 'android' && (
+          <TouchableOpacity
+            style={flowStyles.linkBtn}
+            onPress={payFromAnotherPhone}
+            disabled={!amountOk || !depositPhoneValid || creatingTransaction}
+            activeOpacity={0.8}
+          >
+            <Copy color={Colors.primaryGreen} size={16} />
+            <Text style={flowStyles.linkBtnText}>Payer depuis un autre téléphone (copier le code)</Text>
+          </TouchableOpacity>
+        )}
+      </>
+    );
+  };
+
+  const renderDepositTracking = () => (
+    <>
+      <AmountHero
+        top={`Dépôt sur ${bookmakerName} · ID ${accountId.trim()}`}
+        amount={formatAmountInput(String(transaction?.montant ?? parseAmount(amount)))}
+        bottom={`${currentOperator?.nom ?? ''} · ${phone}`}
+      />
+      <StatusTimeline steps={depositTimeline} />
+      {!!transaction && !transaction.creditError && paymentProgressStep < 4 && (
+        <View style={flowStyles.infoBox}>
+          <Info color={Colors.textSecondary} size={18} />
+          <Text style={flowStyles.infoText}>Vous pouvez quitter cet écran : vous recevrez une notification dès que votre compte est crédité.</Text>
+        </View>
+      )}
+      {depositIsLate && (
+        <View style={flowStyles.lateBox}>
+          <Text style={flowStyles.lateTitle}>Le paiement tarde ?</Text>
+          <Text style={flowStyles.lateText}>
+            Vérifiez le SMS de {currentOperator?.nom}. Si l’argent est bien parti, faites une réclamation depuis vos transactions.
+          </Text>
+          <TouchableOpacity onPress={() => router.push('/user_transactions')} accessibilityRole="link">
+            <Text style={flowStyles.lateLink}>Voir mes transactions</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </>
+  );
+
+  const renderDepositSuccess = (t: Transaction) => {
+    const bkName = bookmakers.find((b) => b.code === t.bookmaker)?.nom || t.bookmaker || bookmakerName;
+    const duration = formatDuration(t.createdAt, t.dateValidation ?? t.updatedAt);
+    const rows = [
+      { label: 'Compte', value: `${bkName} · ${t.compteDestinataire ?? ''}` },
+      { label: 'Payé avec', value: `${t.operateur ?? ''} · ${t.numeroTelephone ?? ''}` },
+      ...(t.referencePaiement ? [{ label: 'Référence', value: t.referencePaiement }] : []),
+      ...(duration ? [{ label: 'Durée', value: duration, highlight: true }] : []),
+    ];
+    return (
+      <View>
+        <SuccessCheck />
+        <Text style={flowStyles.successTitle}>Compte crédité</Text>
+        <Text style={flowStyles.successText}>
+          {t.montant.toLocaleString('fr-FR')} FCFA ont été ajoutés à votre compte {bkName}.
+        </Text>
+        <RecapCard rows={rows} />
+        {Platform.OS !== 'ios' && (
+          <GreenButton title={`Ouvrir ${bkName}`} onPress={() => void openBookmaker()} style={st.pageBtn} />
+        )}
+        <TouchableOpacity
+          style={flowStyles.secondaryBtn}
+          onPress={() => { resetForm(); setMode('deposit'); }}
+          activeOpacity={0.85}
+        >
+          <Text style={flowStyles.secondaryBtnText}>Refaire un dépôt</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={flowStyles.linkBtn} onPress={resetForm} activeOpacity={0.8}>
+          <Text style={flowStyles.linkBtnText}>Retour à la discussion</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderWithdrawalTracking = () => {
+    const done = transaction?.statut === 'VALIDEE';
+    return (
+      <>
+        {done && <SuccessCheck />}
+        {done && <Text style={flowStyles.successTitle}>Retrait envoyé</Text>}
+        <View style={{ marginTop: done ? 16 : 0 }}>
+          <AmountHero
+            top={`Retrait depuis ${bookmakerName} · ID ${withdrawalAccountId.trim()}`}
+            amount={transaction?.montant ? transaction.montant.toLocaleString('fr-FR') : '—'}
+            bottom={`Vers ${currentOperator?.nom ?? ''} · ${withdrawalPhone}`}
+          />
+        </View>
+        <StatusTimeline steps={withdrawalTimeline} />
+        {!done && (
+          <View style={flowStyles.infoBox}>
+            <Info color={Colors.textSecondary} size={18} />
+            <Text style={flowStyles.infoText}>
+              Vous recevrez le SMS de {currentOperator?.nom ?? 'votre opérateur'} et une notification Matistore dès que l’argent est envoyé.
+            </Text>
+          </View>
+        )}
+        <TouchableOpacity
+          style={flowStyles.secondaryBtn}
+          onPress={() => router.push('/user_transactions')}
+          activeOpacity={0.85}
+        >
+          <Text style={flowStyles.secondaryBtnText}>Voir mes transactions</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={flowStyles.linkBtn} onPress={resetForm} activeOpacity={0.8}>
+          <Text style={flowStyles.linkBtnText}>{done ? 'Retour à la discussion' : 'Écrire au support'}</Text>
+        </TouchableOpacity>
+      </>
+    );
+  };
 
   // ─── DEPOSIT ─────────────────────────────────────────────────────────────
   if (mode === 'deposit') {
@@ -939,9 +1529,20 @@ export default function DepositWithdrawalScreen() {
             </TouchableOpacity>
             <View style={st.headerInfo}>
               <Text style={st.headerName} numberOfLines={1} ellipsizeMode="tail">Dépôt</Text>
-              <Text style={st.headerStatus}>Étape {depositProgressStep} sur 4</Text>
+              <Text style={st.headerStatus}>
+                {DEPOSIT_DESIGN_V2 && depositSucceeded ? 'Terminé' : `Étape ${depositProgressStep} sur 5`}
+              </Text>
             </View>
+            {DEPOSIT_DESIGN_V2 && depositStep === 5 && !!transaction && !depositSucceeded
+              && !['VALIDEE', 'REJETEE', 'ANNULEE'].includes(transaction.statut) && <LiveBadge />}
           </View>
+          {DEPOSIT_DESIGN_V2 && !depositSucceeded && (
+            <StepDots
+              labels={['Bookmaker', 'Opérateur', 'Compte', 'Montant', 'Paiement']}
+              current={depositProgressStep}
+              onPressStep={transaction ? undefined : (index) => setDepositStep(depositDotSteps[index])}
+            />
+          )}
           <View style={[st.stepBar, { display: 'none' }]}>
             {depositProgressLabels.map((label, index) => (
               <View key={label} style={st.depositProgressItem}>
@@ -970,6 +1571,12 @@ export default function DepositWithdrawalScreen() {
             contentContainerStyle={[st.pageContent, wide && webSidebarStyles.readable]}
             keyboardShouldPersistTaps="handled"
           >
+            {DEPOSIT_DESIGN_V2 && depositSucceeded ? renderDepositSuccess(depositSucceeded) : (
+            <StepWrap stepKey={depositStep}>
+            {DEPOSIT_DESIGN_V2 && <SummaryChips chips={depositChips} />}
+            {/* ── Étape 0 : Choix du bookmaker ──────────────────────────── */}
+            {depositStep === 0 && renderBookmakerStep(() => setDepositStep(1))}
+
             {/* ── Étape 1 : Choix opérateur ──────────────────────────────── */}
             {depositStep === 1 && (
               <>
@@ -993,35 +1600,8 @@ export default function DepositWithdrawalScreen() {
                     </TouchableOpacity>
                   </View>
                 ) : (
-                  <View style={st.operatorGrid}>
-                    {operators.map((op) => (
-                      <TouchableOpacity
-                        key={op.trackingId}
-                        style={[
-                          st.operatorCard,
-                          operatorId === op.trackingId && st.operatorCardActive,
-                          {
-                            borderColor:
-                              operatorId === op.trackingId
-                                ? Colors.primaryGreen
-                                : Colors.border,
-                          },
-                        ]}
-                        onPress={() => selectOperator(op.trackingId)}
-                        activeOpacity={0.8}
-                      >
-                        <View style={st.operatorLogoFrame}>
-                          <OperatorImage imageUrl={op.imageUrl} style={st.operatorImage} />
-                        </View>
-                        <Text style={st.operatorCardName}>{op.nom}</Text>
-                        {operatorId === op.trackingId && (
-                          <View style={st.operatorCheckBadge}>
-                            <Check color="#fff" size={12} strokeWidth={3} />
-                          </View>
-                        )}
-                      </TouchableOpacity>
-                    ))}
-                  </View>
+                  <OperatorCircles operators={operators} selectedId={operatorId} onSelect={selectOperator} />
+
                 )}
                 <GreenButton
                   title="Suivant →"
@@ -1033,7 +1613,8 @@ export default function DepositWithdrawalScreen() {
             )}
 
             {/* ── Étape 2 : Montant ──────────────────────────────────────── */}
-            {depositStep === 2 && (
+            {depositStep === 2 && DEPOSIT_DESIGN_V2 && renderAmountAndNumber()}
+            {depositStep === 2 && !DEPOSIT_DESIGN_V2 && (
               <>
                 <Text style={st.pageTitle}>Montant du dépôt</Text>
                 <Text style={st.pageSubtitle}>Entrez le montant en FCFA</Text>
@@ -1151,20 +1732,20 @@ export default function DepositWithdrawalScreen() {
               <>
                 <Text style={st.pageTitle}>Identifiant de compte</Text>
                 <Text style={st.pageSubtitle}>
-                  Saisissez ou collez votre ID de compte 1XBET. Le nom du joueur doit être vérifié avant de continuer.
+                  Saisissez ou collez votre ID de compte {bookmakerName}. Le nom du joueur doit être vérifié avant de continuer.
                 </Text>
-                {!!lastUsedInputs?.accountId && lastUsedInputs.accountId !== accountId.trim() && (
+                {!!lastAccountId && lastAccountId !== accountId.trim() && (
                   <TouchableOpacity
                     style={st.lastUsedAccountCard}
-                    onPress={() => setAccountId(lastUsedInputs.accountId ?? '')}
+                    onPress={() => setAccountId(lastAccountId)}
                     activeOpacity={0.82}
                     accessibilityRole="button"
-                    accessibilityLabel={`Utiliser l’identifiant 1XBET ${lastUsedInputs.accountId} déjà utilisé`}
+                    accessibilityLabel={`Utiliser l’identifiant ${bookmakerName} ${lastAccountId} déjà utilisé`}
                   >
                     <View style={st.lastUsedAccountIcon}><Check color={Colors.primaryGreen} size={18} strokeWidth={2.6} /></View>
                     <View style={st.lastUsedAccountCopy}>
                       <Text style={st.lastUsedAccountLabel}>Identifiant utilisé récemment</Text>
-                      <Text style={st.lastUsedAccountValue}>{lastUsedInputs.accountId}</Text>
+                      <Text style={st.lastUsedAccountValue}>{lastAccountId}</Text>
                     </View>
                     <Text style={st.lastUsedAccountAction}>Utiliser →</Text>
                   </TouchableOpacity>
@@ -1191,13 +1772,16 @@ export default function DepositWithdrawalScreen() {
                     <Copy color={Colors.primaryGreen} size={18} />
                   </TouchableOpacity>
                 </View>
-                {depositPlayerValidation.player && (
+                {DEPOSIT_DESIGN_V2 && depositPlayerValidation.player && (
+                  <PlayerFoundCard name={depositPlayerValidation.player.name} bookmakerName={bookmakerName} />
+                )}
+                {!DEPOSIT_DESIGN_V2 && depositPlayerValidation.player && (
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
                     <Check color={Colors.primaryGreen} size={16} />
                     <Text style={{ color: Colors.primaryGreen, marginLeft: 6 }}>
                       {depositPlayerValidation.player.name
                         ? `Utilisateur trouvé : ${depositPlayerValidation.player.name}`
-                        : 'Compte 1XBET trouvé'}
+                        : `Compte ${bookmakerName} trouvé`}
                     </Text>
                   </View>
                 )}
@@ -1205,7 +1789,7 @@ export default function DepositWithdrawalScreen() {
                   <Text style={st.errorText}>{depositPlayerValidation.error}</Text>
                 )}
                 <GreenButton
-                  title="Suivant →"
+                  title={DEPOSIT_DESIGN_V2 ? 'Continuer →' : 'Suivant →'}
                   onPress={() => void prepareDeposit()}
                   disabled={
                     !accountId.trim()
@@ -1221,12 +1805,15 @@ export default function DepositWithdrawalScreen() {
             {/* ── Étape 5 : Effectuer le transfert ──────────────────────── */}
             {depositStep === 5 && currentOperator && (
               <>
-                <Text style={st.pageTitle}>Effectuer le transfert</Text>
+                {DEPOSIT_DESIGN_V2 && renderDepositTracking()}
+                {!DEPOSIT_DESIGN_V2 && <Text style={st.pageTitle}>Effectuer le transfert</Text>}
+                {!DEPOSIT_DESIGN_V2 && (
                 <Text style={st.pageSubtitle}>
                   Utilisez le code ci-dessous pour transférer {amount} FCFA via{' '}
                   {currentOperator.nom} vers le compte de matistore
                 </Text>
-                {transaction && ['EN_ATTENTE_AUTO', 'EN_VERIFICATION'].includes(transaction.statut) && (
+                )}
+                {!DEPOSIT_DESIGN_V2 && transaction && ['EN_ATTENTE_AUTO', 'EN_VERIFICATION'].includes(transaction.statut) && (
                   <View style={st.depositPendingIndicator}>
                     <ActivityIndicator color={Colors.primaryGreen} size="small" />
                     <Text style={st.depositPendingText}>
@@ -1234,13 +1821,13 @@ export default function DepositWithdrawalScreen() {
                     </Text>
                   </View>
                 )}
-                {transaction?.statut === 'EN_ATTENTE_ADMIN' && !transaction.creditError && (
+                {!DEPOSIT_DESIGN_V2 && transaction?.statut === 'EN_ATTENTE_ADMIN' && !transaction.creditError && (
                   <View style={st.depositPendingIndicator}>
                     <ActivityIndicator color={Colors.primaryGreen} size="small" />
                     <Text style={st.depositPendingText}>Paiement reçu, crédit en cours</Text>
                   </View>
                 )}
-                {transaction && (
+                {!DEPOSIT_DESIGN_V2 && transaction && (
                   <View style={st.paymentProgressCard}>
                     <Text style={st.paymentProgressTitle}>
                       {transaction.creditError ? 'Paiement reçu, crédit à vérifier' : 'Suivi de votre dépôt'}
@@ -1295,8 +1882,17 @@ export default function DepositWithdrawalScreen() {
                 <GreenButton
                   title={depositPaymentAlreadyReceived
                     ? 'Paiement déjà reçu'
-                    : creatingTransaction ? 'Enregistrement...' : 'Effectuer le paiement →'}
-                  onPress={() => { if (!manualDialOpened) void beginDeposit(); }}
+                    : creatingTransaction ? 'Enregistrement...'
+                    : manualDialOpened ? 'Relancer le code de paiement' : 'Effectuer le paiement →'}
+                  onPress={() => {
+                    // The deposit already exists once the dialer opened: reopen the phone with the
+                    // same code instead of creating a second deposit.
+                    if (manualDialOpened) {
+                      void Linking.openURL(`tel:${encodeURIComponent(buildUssdCode(currentOperator, depositNumero, rawAmount))}`).catch(() => {});
+                      return;
+                    }
+                    void beginDeposit();
+                  }}
                   disabled={creatingTransaction || depositPaymentAlreadyReceived}
                   style={st.pageBtn}
                 />
@@ -1312,7 +1908,7 @@ export default function DepositWithdrawalScreen() {
                     {creatingTransaction ? 'Enregistrement...' : Platform.OS === 'ios' ? 'Copier le code de paiement' : 'Copier le code et attendre'}
                   </Text>
                 </TouchableOpacity>
-                {processing && (
+                {!DEPOSIT_DESIGN_V2 && processing && (
                   <View style={{ alignItems: 'center', paddingVertical: 20 }}>
                     <ActivityIndicator color={Colors.primaryGreen} size="large" />
                     <Text style={{ color: Colors.textSecondary, marginTop: 12, textAlign: 'center' }}>
@@ -1336,6 +1932,8 @@ export default function DepositWithdrawalScreen() {
                   </TouchableOpacity>
                 )}
               </>
+            )}
+            </StepWrap>
             )}
           </ScrollView>
         </KeyboardAvoidingView>
@@ -1382,11 +1980,20 @@ export default function DepositWithdrawalScreen() {
           </TouchableOpacity>
           <View style={st.headerInfo}>
             <Text style={st.headerName} numberOfLines={1} ellipsizeMode="tail">Retrait</Text>
-            <Text style={st.headerStatus}>Étape {withdrawalStep} sur 3</Text>
+            <Text style={st.headerStatus}>{withdrawalStep === 4 ? 'Suivi' : `Étape ${withdrawalStep + 1} sur 4`}</Text>
           </View>
+          {DEPOSIT_DESIGN_V2 && withdrawalStep === 4
+            && !['VALIDEE', 'REJETEE', 'ANNULEE'].includes(transaction?.statut ?? '') && <LiveBadge />}
         </View>
-        <View style={st.stepBar}>
-          {[1, 2, 3].map((s) => (
+        {DEPOSIT_DESIGN_V2 && (
+          <StepDots
+            labels={['Bookmaker', 'Opérateur', 'Compte', 'Code']}
+            current={withdrawalStep + 1}
+            onPressStep={withdrawalStep === 4 ? undefined : (index) => setWithdrawalStep(index as WithdrawalStep)}
+          />
+        )}
+        <View style={[st.stepBar, DEPOSIT_DESIGN_V2 && { display: 'none' }]}>
+          {[0, 1, 2, 3].map((s) => (
             <View
               key={s}
               style={[
@@ -1401,22 +2008,21 @@ export default function DepositWithdrawalScreen() {
           contentContainerStyle={[st.pageContent, wide && webSidebarStyles.readable]}
           keyboardShouldPersistTaps="handled"
         >
+          <StepWrap stepKey={withdrawalStep}>
+          {DEPOSIT_DESIGN_V2 && <SummaryChips chips={withdrawalChips} />}
+          {withdrawalStep === 0 && renderBookmakerStep(() => setWithdrawalStep(1))}
+          {withdrawalStep === 4 && renderWithdrawalTracking()}
+
           {withdrawalStep === 1 && (
             <>
               <Text style={st.pageTitle}>Choisir l'opérateur</Text>
               <Text style={st.pageSubtitle}>Sélectionnez le réseau Mobile Money qui recevra votre retrait.</Text>
               {loadingOperators ? <ActivityIndicator color={Colors.primaryGreen} style={{ marginVertical: 32 }} /> : (
-                <View style={st.operatorGrid}>
-                  {operators.filter((op) => op.active).map((op) => (
-                    <TouchableOpacity key={op.trackingId} style={[st.operatorCard, operatorId === op.trackingId && st.operatorCardActive, { borderColor: operatorId === op.trackingId ? Colors.primaryGreen : Colors.border }]} onPress={() => selectOperator(op.trackingId)} activeOpacity={0.8}>
-                      <View style={st.operatorLogoFrame}>
-                        <OperatorImage imageUrl={op.imageUrl} style={st.operatorImage} />
-                      </View>
-                      <Text style={st.operatorCardName}>{op.nom}</Text>
-                      {operatorId === op.trackingId && <View style={st.operatorCheckBadge}><Check color="#fff" size={12} strokeWidth={3} /></View>}
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                <OperatorCircles
+                  operators={operators.filter((op) => op.active)}
+                  selectedId={operatorId}
+                  onSelect={selectOperator}
+                />
               )}
               {!loadingOperators && !operators.some((op) => op.active) && <Text style={st.errorText}>Aucun opérateur disponible. Réessayez plus tard.</Text>}
               <GreenButton title="Suivant →" onPress={() => operatorId && setWithdrawalStep(2)} disabled={!operatorId || loadingOperators} style={st.pageBtn} />
@@ -1425,21 +2031,21 @@ export default function DepositWithdrawalScreen() {
 
           {withdrawalStep === 2 && (
             <>
-              <Text style={st.pageTitle}>Vérifier votre compte 1XBET</Text>
+              <Text style={st.pageTitle}>Vérifier votre compte {bookmakerName}</Text>
               <Text style={st.pageSubtitle}>Saisissez votre ID avant de continuer.</Text>
-              <Text style={st.inputLabel}>ID de compte 1XBET</Text>
-              {!!lastUsedInputs?.accountId && lastUsedInputs.accountId !== withdrawalAccountId.trim() && (
+              <Text style={st.inputLabel}>ID de compte {bookmakerName}</Text>
+              {!!lastAccountId && lastAccountId !== withdrawalAccountId.trim() && (
                 <TouchableOpacity
                   style={st.lastUsedAccountCard}
-                  onPress={() => setWithdrawalAccountId(lastUsedInputs.accountId ?? '')}
+                  onPress={() => setWithdrawalAccountId(lastAccountId)}
                   activeOpacity={0.82}
                   accessibilityRole="button"
-                  accessibilityLabel={`Utiliser l’identifiant 1XBET ${lastUsedInputs.accountId} déjà utilisé`}
+                  accessibilityLabel={`Utiliser l’identifiant ${bookmakerName} ${lastAccountId} déjà utilisé`}
                 >
                   <View style={st.lastUsedAccountIcon}><Check color={Colors.primaryGreen} size={18} strokeWidth={2.6} /></View>
                   <View style={st.lastUsedAccountCopy}>
                     <Text style={st.lastUsedAccountLabel}>Identifiant utilisé récemment</Text>
-                    <Text style={st.lastUsedAccountValue}>{lastUsedInputs.accountId}</Text>
+                    <Text style={st.lastUsedAccountValue}>{lastAccountId}</Text>
                   </View>
                   <Text style={st.lastUsedAccountAction}>Utiliser →</Text>
                 </TouchableOpacity>
@@ -1464,13 +2070,16 @@ export default function DepositWithdrawalScreen() {
                   <Copy color={Colors.primaryGreen} size={18} />
                 </TouchableOpacity>
               </View>
-              {withdrawalPlayerValidation.player && (
+              {DEPOSIT_DESIGN_V2 && withdrawalPlayerValidation.player && (
+                <PlayerFoundCard name={withdrawalPlayerValidation.player.name} bookmakerName={bookmakerName} />
+              )}
+              {!DEPOSIT_DESIGN_V2 && withdrawalPlayerValidation.player && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
                   <Check color={Colors.primaryGreen} size={16} />
                   <Text style={{ color: Colors.primaryGreen, marginLeft: 6 }}>
                     {withdrawalPlayerValidation.player.name
                       ? `Utilisateur trouvé : ${withdrawalPlayerValidation.player.name}`
-                      : 'Compte 1XBET trouvé'}
+                      : `Compte ${bookmakerName} trouvé`}
                   </Text>
                 </View>
               )}
@@ -1479,9 +2088,9 @@ export default function DepositWithdrawalScreen() {
               )}
               <Text style={[st.pageTitle, { marginTop: 24 }]}>Comment effectuer un retrait ?</Text>
               <View style={st.instructionCard}>
-                <Text style={st.instructionStep}>① Connectez-vous à 1xBet</Text>
+                <Text style={st.instructionStep}>① Connectez-vous à {bookmakerName}</Text>
                 <Text style={st.instructionText}>
-                  Ouvrez l'application 1xBet et accédez à votre
+                  Ouvrez l'application {bookmakerName} et accédez à votre
                   compte.
                 </Text>
               </View>
@@ -1503,11 +2112,11 @@ export default function DepositWithdrawalScreen() {
               {Platform.OS !== 'ios' && (
               <TouchableOpacity
                 style={st.xbetBtn}
-                onPress={open1xBet}
+                onPress={() => void openBookmaker()}
                 activeOpacity={0.85}
               >
                 <ExternalLink color="#fff" size={20} />
-                <Text style={st.xbetBtnText}>Ouvrir 1xBet</Text>
+                <Text style={st.xbetBtnText}>Ouvrir {bookmakerName}</Text>
               </TouchableOpacity>
               )}
               <GreenButton
@@ -1528,11 +2137,11 @@ export default function DepositWithdrawalScreen() {
             <>
               <Text style={st.pageTitle}>Saisir votre code</Text>
               <Text style={st.pageSubtitle}>
-                Collez le code généré sur 1xBet et entrez votre numéro Mobile
+                Collez le code généré sur {bookmakerName} et entrez votre numéro Mobile
                 Money
               </Text>
 
-              <Text style={st.inputLabel}>Code de retrait 1xBet</Text>
+              <Text style={st.inputLabel}>Code de retrait {bookmakerName}</Text>
               <View style={st.inputWrapWithIcon}>
                 <TextInput
                   style={[st.pageInput, { flex: 1 }]}
@@ -1605,6 +2214,7 @@ export default function DepositWithdrawalScreen() {
               />
             </>
           )}
+          </StepWrap>
         </ScrollView>
         <InfoModal
           visible={!!withdrawalNotice}
@@ -1630,44 +2240,33 @@ export default function DepositWithdrawalScreen() {
   // Deposit / withdrawal cards: under the chat on phones, in a side panel on a computer.
   const actionCards = (
     <View style={[st.actionRow, wide && st.actionColumn]}>
-      <TouchableOpacity
-        style={[st.actionCardDeposit, !depositCaptureAvailable && { opacity: 0.45 }]}
+      <PressableScale
+        style={[st.actionCardDeposit, st.actionCardInner, !depositCaptureAvailable && { opacity: 0.45 }]}
         onPress={() => setMode('deposit')}
-        activeOpacity={0.85}
         disabled={!depositCaptureAvailable}
+        accessibilityLabel="Faire un dépôt"
       >
-        <LinearGradient
-          colors={[Colors.primaryGreen, Colors.secondaryGreen]}
-          style={[st.actionCardInner, { flex: 1 }]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <View style={st.actionIconWrap}>
-            <ArrowDownToLine color="#000" size={22} strokeWidth={2.5} />
-          </View>
-          <Text style={st.actionCardTitle}>Dépôt</Text>
-          <Text style={st.actionCardSub}>{depositCaptureAvailable ? 'Recharger votre compte' : 'Dépôts temporairement indisponibles'}</Text>
-        </LinearGradient>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={st.actionCardWithdrawal}
-        onPress={() => setMode('withdrawal')}
-        activeOpacity={0.85}
-      >
-        <View style={st.actionCardInner}>
-          <View style={[st.actionIconWrap, st.actionIconWrapOutline]}>
-            <ArrowUpFromLine
-              color={Colors.primaryGreen}
-              size={22}
-              strokeWidth={2.5}
-            />
-          </View>
-          <Text style={[st.actionCardTitle, { color: Colors.primaryGreen }]}>
-            Retrait
-          </Text>
-          <Text style={st.actionCardSub}>Retirer vers Mobile Money</Text>
+        <View style={st.actionIconWrap}>
+          <ArrowDownToLine color="#050505" size={20} strokeWidth={2.6} />
         </View>
-      </TouchableOpacity>
+        <View style={st.actionCardCopy}>
+          <Text style={st.actionCardTitle}>Dépôt</Text>
+          <Text style={st.actionCardSub} numberOfLines={1}>{depositCaptureAvailable ? 'Recharger' : 'Indisponible'}</Text>
+        </View>
+      </PressableScale>
+      <PressableScale
+        style={[st.actionCardWithdrawal, st.actionCardInner]}
+        onPress={() => setMode('withdrawal')}
+        accessibilityLabel="Faire un retrait"
+      >
+        <View style={[st.actionIconWrap, st.actionIconWrapOutline]}>
+          <ArrowUpFromLine color={Colors.primaryGreen} size={20} strokeWidth={2.6} />
+        </View>
+        <View style={st.actionCardCopy}>
+          <Text style={[st.actionCardTitle, { color: Colors.primaryGreen }]}>Retrait</Text>
+          <Text style={[st.actionCardSub, { color: Colors.textSecondary }]} numberOfLines={1}>Vers Mobile Money</Text>
+        </View>
+      </PressableScale>
     </View>
   );
 
@@ -1805,9 +2404,9 @@ const st = StyleSheet.create({
     borderBottomColor: Colors.border,
     gap: 12,
   },
-  backBtn: { padding: 4 },
+  backBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#161616', alignItems: 'center', justifyContent: 'center' },
   headerInfo: { flex: 1 },
-  headerName: { color: Colors.white, fontSize: 16, fontWeight: '700' },
+  headerName: { color: Colors.white, fontSize: 16, fontWeight: '800' },
   headerStatus: { color: Colors.primaryGreen, fontSize: 12 },
 
   stepBar: {
@@ -1917,20 +2516,23 @@ const st = StyleSheet.create({
   copyDepositCodeBtnDisabled: { opacity: 0.5 },
   copyDepositCodeText: { color: Colors.primaryGreen, fontSize: 15, fontWeight: '700' },
 
-  operatorGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 8,
-  },
+  operatorGrid: { gap: 10, marginBottom: 8 },
+  circleRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 36, marginTop: 8, marginBottom: 8 },
+  circleItem: { alignItems: 'center', gap: 10 },
+  circleRing: { width: 96, height: 96, borderRadius: 48, padding: 4, borderWidth: 2.5, borderColor: 'transparent' },
+  circleRingOn: { borderColor: Colors.primaryGreen },
+  circleLogo: { flex: 1, borderRadius: 44, backgroundColor: '#fff', overflow: 'hidden', padding: 10 },
+  circleCheck: { position: 'absolute', right: -2, bottom: -2, width: 26, height: 26, borderRadius: 13, backgroundColor: Colors.primaryGreen, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: Colors.darkBg },
+  circleName: { color: Colors.white, fontSize: 15, fontWeight: '800' },
+  // Same shape as the bookmaker cards: the logo fills the top, the name sits under it.
   operatorCard: {
-    width: '30%',
-    alignItems: 'center',
-    padding: 16,
+    flexGrow: 1,
+    flexBasis: '45%',
     backgroundColor: Colors.cardBg,
     borderRadius: 16,
     borderWidth: 2,
     borderColor: Colors.border,
+    overflow: 'hidden',
     position: 'relative',
   },
   connectionErrorBox: {
@@ -1960,12 +2562,60 @@ const st = StyleSheet.create({
   },
   retryBtnText: { color: Colors.primaryGreen, fontWeight: '700', fontSize: 13 },
   operatorCardActive: { backgroundColor: 'rgba(125,255,42,0.05)' },
+  bookmakerGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  bookmakerCard: {
+    flexGrow: 1,
+    flexBasis: '45%',
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: Colors.border,
+    backgroundColor: Colors.cardBg,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  bookmakerCardActive: {
+    borderColor: Colors.primaryGreen,
+  },
+  bookmakerCardInactive: {
+    opacity: 0.45,
+  },
+  bookmakerImage: {
+    width: '100%',
+    aspectRatio: 2,
+  },
+  bookmakerCardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  bookmakerCardName: {
+    color: Colors.white,
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  bookmakerSoonBadge: {
+    color: Colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '600',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    overflow: 'hidden',
+  },
   operatorLogoFrame: {
-    width: 88,
-    height: 68,
-    marginBottom: 10,
-    padding: 5,
-    borderRadius: 12,
+    width: '100%',
+    aspectRatio: 2,
+    padding: 14,
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1974,9 +2624,10 @@ const st = StyleSheet.create({
   operatorImage: { width: '100%', height: '100%' },
   operatorCardName: {
     color: Colors.white,
-    fontSize: 12,
+    fontSize: 15,
     fontWeight: '700',
-    textAlign: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   operatorCheckBadge: {
     position: 'absolute',
@@ -2216,42 +2867,51 @@ const st = StyleSheet.create({
   widePanel: { width: 340, padding: 20, gap: 16, borderRightWidth: 1, borderRightColor: Colors.border, backgroundColor: Colors.secondaryBg },
   widePanelTitle: { color: Colors.white, fontSize: 16, fontWeight: '800' },
   actionColumn: { flexDirection: 'column', paddingHorizontal: 0 },
+  // Option A: both buttons docked right above the message bar.
   actionRow: {
     flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    paddingBottom: 16,
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 6,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    backgroundColor: Colors.secondaryBg,
+    borderTopColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: '#0A0A0A',
   },
-  actionCardDeposit: { flex: 1, borderRadius: 16, overflow: 'hidden' },
+  actionCardDeposit: {
+    flex: 1,
+    borderRadius: 18,
+    backgroundColor: Colors.primaryGreen,
+    shadowColor: Colors.primaryGreen, shadowOpacity: 0.35, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 6,
+  },
   actionCardWithdrawal: {
     flex: 1,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1.5,
-    borderColor: Colors.primaryGreen,
-    backgroundColor: 'rgba(125,255,42,0.04)',
-    overflow: 'hidden',
+    borderColor: 'rgba(125,255,42,0.45)',
+    backgroundColor: '#141414',
   },
   actionCardInner: {
-    padding: 16,
-    minHeight: 120,
-    justifyContent: 'center',
+    minHeight: 64,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
+  actionCardCopy: { flex: 1, minWidth: 0 },
   actionIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.15)',
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    backgroundColor: 'rgba(5,5,5,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 6,
   },
   actionIconWrapOutline: { backgroundColor: 'rgba(125,255,42,0.12)' },
-  actionCardTitle: { color: '#000', fontSize: 16, fontWeight: '900' },
-  actionCardSub: { color: 'rgba(0,0,0,0.55)', fontSize: 11, fontWeight: '600' },
+  actionCardTitle: { color: '#050505', fontSize: 16, fontWeight: '900' },
+  actionCardSub: { color: 'rgba(5,5,5,0.62)', fontSize: 11, fontWeight: '600' },
   errorText: {
     color: '#ef4444',
     fontSize: 13,

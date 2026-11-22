@@ -220,7 +220,7 @@ export default function SlideEditorScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      aspect: [16, 7],
+      aspect: [3, 2],
       quality: 0.85,
     });
     if (!result.canceled && result.assets[0]?.uri) {
@@ -741,7 +741,8 @@ const styles = StyleSheet.create({
   },
   imageSection: {
     width: '100%',
-    height: 160,
+    aspectRatio: 3 / 2, // same frame as the home banner
+
     position: 'relative',
   },
   imagePreview: {

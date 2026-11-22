@@ -1,0 +1,427 @@
+import { Colors } from '@/constants/colors';
+import type { ReferralPrize, ReferralRankingRow } from '@/data_api/models/referral.types';
+import { referralService } from '@/data_api/services/referralService';
+import { resolveFileUrl } from '@/hooks/useFileUrl';
+import { useReferralTournament } from '@/hooks/useReferralTournament';
+import { useAuth } from '@/hooks/useAuth';
+import { UserRole } from '@/data_api/models/user.types';
+import {
+  PersonAvatar,
+  ReferralHelpSheet,
+  formatCountdown,
+  obtainReferralCode,
+  ordinal,
+  shareReferralCode,
+} from '@/components/referral/referralUi';
+import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
+import { ArrowLeft, Clock3, Crown, Trophy, UserPlus, Users, Zap } from 'lucide-react-native';
+import { SnowCap, Snowfall } from '@/components/christmas/Christmas';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator, Animated, Easing, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Toast from 'react-native-toast-message';
+
+const ROW_H = 46;
+const LOOKS = [
+  { color: '#FFD54A', tint: 'rgba(255,213,74,0.28)', edge: 'rgba(255,213,74,0.5)', h: 104, size: 74, w: 116 },
+  { color: '#D7DEE4', tint: 'rgba(215,222,228,0.2)', edge: 'rgba(215,222,228,0.35)', h: 80, size: 60, w: 104 },
+  { color: '#E59A5B', tint: 'rgba(229,154,91,0.22)', edge: 'rgba(229,154,91,0.4)', h: 64, size: 60, w: 104 },
+];
+
+const prizeFor = (prizes: ReferralPrize[], rank: number) => prizes.find((p) => p.rank === rank);
+const shortPrize = (p?: ReferralPrize) => (p ? (p.type === 'MONEY' ? `${Number(p.amount ?? 0).toLocaleString('fr-FR')} F` : p.labelText || p.label || 'Lot') : '');
+
+function useLoop(duration: number, easing = Easing.inOut(Easing.quad)) {
+  const v = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(Animated.timing(v, { toValue: 1, duration, easing, useNativeDriver: true }));
+    loop.start();
+    return () => loop.stop();
+  }, [duration, easing, v]);
+  return v;
+}
+
+/** A number that pops when it grows. */
+function PopNumber({ value, style }: { value: number; style: any }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const prev = useRef(value);
+  useEffect(() => {
+    if (value > prev.current) {
+      Animated.sequence([
+        Animated.timing(scale, { toValue: 1.35, duration: 220, useNativeDriver: true }),
+        Animated.spring(scale, { toValue: 1, friction: 4, useNativeDriver: true }),
+      ]).start();
+    }
+    prev.current = value;
+  }, [scale, value]);
+  return <Animated.Text style={[style, { transform: [{ scale }] }]}>{value}</Animated.Text>;
+}
+
+function PodiumSpot({ row, rank, prize }: { row?: ReferralRankingRow; rank: number; prize?: ReferralPrize }) {
+  const look = LOOKS[rank - 1];
+  const first = rank === 1;
+  const glow = useLoop(2200);
+  const float = useLoop(3000);
+  const shine = useLoop(2600, Easing.inOut(Easing.cubic));
+  const lotUri = prize?.type === 'LOT' ? resolveFileUrl('referral', prize.imageUrl) : '';
+  const name = row?.name ?? 'À prendre';
+  return (
+    <View style={{ width: look.w, alignItems: 'center', gap: 6 }}>
+      {first && (
+        <Animated.View style={{ transform: [{ translateY: float.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, -5, 0] }) }] }}>
+          <Crown color="#FFD54A" fill="#FFD54A" size={28} />
+        </Animated.View>
+      )}
+      <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+        {first && (
+          <Animated.View style={[st.halo, {
+            width: look.size + 10, height: look.size + 10, borderRadius: look.size,
+            opacity: glow.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.6, 0.15, 0.6] }),
+            transform: [{ scale: glow.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.18, 1] }) }],
+          }]} />
+        )}
+        {row
+          ? <PersonAvatar name={row.name} image={row.image} size={look.size} ring={look.color} ringWidth={3} />
+          : <View style={[st.emptySpot, { width: look.size, height: look.size, borderRadius: look.size / 2, borderColor: look.color }]}><Text style={{ color: look.color, fontWeight: '900', fontSize: 18 }}>?</Text></View>}
+      </View>
+      <Text style={[st.podiumName, row?.isMe && { color: Colors.primaryGreen }]} numberOfLines={2}>{row?.isMe ? `${name} (toi)` : name}</Text>
+      <View style={[st.step, { height: look.h, borderColor: look.edge }]}>
+        <LinearGradient colors={[look.tint, 'rgba(255,255,255,0.03)']} style={StyleSheet.absoluteFill} />
+        <SnowCap variant={rank} height={12} inset />
+        <Animated.View pointerEvents="none" style={[st.shine, {
+          transform: [{ translateX: shine.interpolate({ inputRange: [0, 1], outputRange: [-60, look.w + 40] }) }, { rotate: '18deg' }],
+        }]} />
+        <PopNumber value={row?.validated ?? 0} style={[st.stepCount, { color: look.color }]} />
+        <Text style={st.stepLabel}>validés</Text>
+        {!!prize && (
+          <View style={st.prizeChip}>
+            {!!lotUri && <Image source={{ uri: lotUri }} style={st.prizeThumb} />}
+            <Text style={st.prizeChipText} numberOfLines={1}>{shortPrize(prize)}</Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
+function RankRow({ row, winnersCount, prize }: { row: ReferralRankingRow; winnersCount: number; prize?: ReferralPrize }) {
+  const top = useRef(new Animated.Value((row.rank - 4) * ROW_H)).current;
+  const prevRank = useRef(row.rank);
+  const [move, setMove] = useState<'up' | 'down' | null>(null);
+  useEffect(() => {
+    if (row.rank !== prevRank.current) {
+      setMove(row.rank < prevRank.current ? 'up' : 'down');
+      prevRank.current = row.rank;
+      Animated.timing(top, { toValue: (row.rank - 4) * ROW_H, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+      const t = setTimeout(() => setMove(null), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [row.rank, top]);
+  const winner = row.rank <= winnersCount;
+  return (
+    <Animated.View style={[st.row, { top }, winner && st.rowWinner, row.isMe && st.rowMe]}>
+      <Text style={st.rowRank}>{row.rank}</Text>
+      <PersonAvatar name={row.name} image={row.image} size={30} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[st.rowName, row.isMe && { color: Colors.primaryGreen }]} numberOfLines={1}>{row.isMe ? `${row.name} (toi)` : row.name}</Text>
+        {winner && <Text style={st.rowTag} numberOfLines={1}>Gagnant · {shortPrize(prize)}</Text>}
+      </View>
+      {!!move && <Text style={{ color: move === 'up' ? Colors.primaryGreen : '#FF8A65', fontWeight: '900', fontSize: 11 }}>{move === 'up' ? '▲' : '▼'}</Text>}
+      <PopNumber value={row.validated} style={st.rowCount} />
+    </Animated.View>
+  );
+}
+
+export default function ReferralTournamentScreen() {
+  const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  // The admin watches the tournament as clients see it, without the personal card.
+  const isAdmin = user?.role === UserRole.ADMIN;
+  const { data, loading, error, refresh } = useReferralTournament();
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  const [feed, setFeed] = useState<string | null>(null);
+  const feedAnim = useRef(new Animated.Value(1)).current;
+  const prevCounts = useRef<Map<string, number> | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const listY = useRef(0);
+  const blink = useLoop(1400);
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const round = data?.round ?? null;
+  const ranking = useMemo(() => round?.ranking ?? [], [round]);
+
+  // Live feed: the last person whose count went up.
+  useEffect(() => {
+    if (!round) return;
+    const next = new Map(ranking.map((r) => [r.trackingId, r.validated]));
+    const prev = prevCounts.current;
+    if (prev) {
+      const gainer = ranking.find((r) => r.validated > (prev.get(r.trackingId) ?? 0));
+      if (gainer) {
+        setFeed(gainer.isMe ? 'Toi' : gainer.name);
+        feedAnim.setValue(0);
+        Animated.timing(feedAnim, { toValue: 1, duration: 450, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+      }
+    } else if (ranking[0]) {
+      setFeed(null);
+    }
+    prevCounts.current = next;
+  }, [feedAnim, ranking, round]);
+
+  const invite = async () => {
+    try {
+      const me = await referralService.getMe();
+      const code = me.code ?? await obtainReferralCode();
+      if (code) await shareReferralCode(code);
+      if (!me.code && code) void refresh();
+    } catch {
+      Toast.show({ type: 'error', text1: 'Erreur', text2: 'Réessayez dans un instant.' });
+    }
+  };
+
+  const findMe = () => {
+    const rank = round?.me.rank;
+    if (!rank) {
+      Toast.show({ type: 'info', text1: 'Pas encore classé', text2: 'Fais valider ton premier parrainage pour apparaître.' });
+      return;
+    }
+    scrollRef.current?.scrollTo({ y: rank <= 3 ? 0 : Math.max(0, listY.current + (rank - 4) * ROW_H - 160), animated: true });
+  };
+
+  const header = (
+    <View style={[st.header, { paddingTop: insets.top + 10 }]}>
+      <TouchableOpacity style={st.iconBtn} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Retour">
+        <ArrowLeft color={Colors.white} size={20} />
+      </TouchableOpacity>
+      <View style={{ flex: 1 }}>
+        {!!round && <Text style={st.kicker}>TOUR N°{round.number}</Text>}
+        <Text style={st.title}>Tournoi de parrainage</Text>
+      </View>
+      {!!round && (
+        <TouchableOpacity style={st.iconBtn} onPress={() => setHelpOpen(true)} accessibilityRole="button" accessibilityLabel="Comment ça marche">
+          <Text style={{ color: Colors.primaryGreen, fontSize: 18, fontWeight: '900' }}>?</Text>
+        </TouchableOpacity>
+      )}
+      {!isAdmin && (
+        <TouchableOpacity style={st.iconBtn} onPress={() => router.push('/referral/mine' as any)} accessibilityRole="button" accessibilityLabel="Mes parrainages">
+          <Users color={Colors.white} size={19} />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
+  if (loading && !data) {
+    return <View style={st.container}>{header}<ActivityIndicator color={Colors.primaryGreen} style={{ marginTop: 80 }} /></View>;
+  }
+
+  if (!round) {
+    return (
+      <View style={st.container}>
+        {header}
+        <View style={st.empty}>
+          <Trophy color={Colors.primaryGreen} size={56} />
+          <Text style={st.emptyTitle}>{error ? 'Connexion impossible' : 'Pas de tournoi en cours'}</Text>
+          <Text style={st.emptyText}>
+            {error ? 'Vérifiez votre connexion puis réessayez.' : 'Le prochain tournoi de parrainage sera annoncé dans l’application.'}
+          </Text>
+          {error && (
+            <TouchableOpacity style={st.secondaryBtn} onPress={() => void refresh()}><Text style={st.secondaryBtnText}>Réessayer</Text></TouchableOpacity>
+          )}
+          {!!data?.lastResults && (
+            <TouchableOpacity style={st.primaryBtn} onPress={() => router.push('/referral/results' as any)} activeOpacity={0.85}>
+              <Text style={st.primaryBtnText}>Résultats du tour n°{data.lastResults.number}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        <Snowfall count={18} gifts />
+      </View>
+    );
+  }
+
+  const clock = formatCountdown(new Date(round.endAt).getTime() - now);
+  const others = ranking.filter((r) => r.rank > 3);
+  const podium = [2, 1, 3].map((rank) => ({ rank, row: ranking[rank - 1], prize: prizeFor(round.prizes, rank) }));
+  const me = round.me;
+  const progress = me.missingForWinners === 0 ? 1 : me.validated / Math.max(1, me.validated + me.missingForWinners);
+
+  return (
+    <View style={st.container}>
+      <LinearGradient colors={['rgba(125,255,42,0.22)', 'rgba(125,255,42,0.04)', 'transparent']} style={st.glow} pointerEvents="none" />
+      {header}
+      <ScrollView ref={scrollRef} contentContainerStyle={{ paddingBottom: (isAdmin ? 40 : 230) + insets.bottom }} showsVerticalScrollIndicator={false}>
+        <View style={st.clockRow}>
+          <Clock3 color="#A0A0A0" size={15} />
+          <Text style={st.clockLabel}>Fin dans</Text>
+          {clock.map((c) => (
+            <View key={c.l} style={st.clockCell}><Text style={st.clockValue}>{c.v}</Text><Text style={st.clockUnit}>{c.l}</Text></View>
+          ))}
+          <View style={st.live}>
+            <Animated.View style={[st.liveDot, { opacity: blink.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 0.25, 1] }) }]} />
+            <Text style={st.liveText}>Live</Text>
+          </View>
+        </View>
+
+        <View style={st.podium}>
+          {podium.map((p) => <PodiumSpot key={p.rank} rank={p.rank} row={p.row} prize={p.prize} />)}
+        </View>
+
+        <View style={st.feed}>
+          <Zap color={Colors.primaryGreen} fill={Colors.primaryGreen} size={15} />
+          <Animated.Text
+            style={[st.feedText, { opacity: feedAnim, transform: [{ translateY: feedAnim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }]}
+            numberOfLines={1}
+          >
+            {feed
+              ? <><Text style={{ color: Colors.white, fontWeight: '800' }}>{feed}</Text> vient de valider un parrainage</>
+              : `${ranking.length} parrain${ranking.length > 1 ? 's' : ''} en course · ${round.winnersCount} gagnants`}
+          </Animated.Text>
+        </View>
+
+        {!!data?.lastResults && (
+          <TouchableOpacity style={st.resultsLink} onPress={() => router.push('/referral/results' as any)} activeOpacity={0.8}>
+            <Trophy color="#FFD54A" size={16} />
+            <Text style={st.resultsLinkText}>Résultats du tour n°{data.lastResults.number}</Text>
+            <Text style={{ color: Colors.primaryGreen, fontWeight: '800', fontSize: 12 }}>Voir</Text>
+          </TouchableOpacity>
+        )}
+
+        {others.length > 0 && (
+          <View style={{ marginHorizontal: 20, marginTop: 12, height: others.length * ROW_H }} onLayout={(e) => { listY.current = e.nativeEvent.layout.y; }}>
+            {others.map((row) => (
+              <RankRow key={row.trackingId} row={row} winnersCount={round.winnersCount} prize={prizeFor(round.prizes, row.rank)} />
+            ))}
+            {round.winnersCount > 3 && others.length > round.winnersCount - 3 && (
+              <View pointerEvents="none" style={[st.zoneLine, { top: (round.winnersCount - 3) * ROW_H - 3 }]}>
+                <Text style={st.zoneText}>ZONE DES GAGNANTS</Text>
+              </View>
+            )}
+          </View>
+        )}
+        {ranking.length === 0 && (
+          <Text style={st.noneYet}>Personne n’a encore de parrainage validé. Invite tes amis et prends la tête !</Text>
+        )}
+      </ScrollView>
+      <Snowfall count={18} gifts />
+
+      {!isAdmin && <LinearGradient colors={['transparent', Colors.darkBg]} locations={[0, 0.2]} style={[st.bottom, { paddingBottom: insets.bottom + 16 }]}>
+        <View style={st.meCard}>
+          <SnowCap variant={1} height={16} />
+          {me.hasCode ? (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={st.meRank}><Text style={st.meRankText}>{me.rank ? ordinal(me.rank) : '—'}</Text></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={st.meTitle}>Toi · {me.validated} parrainage{me.validated > 1 ? 's' : ''} validé{me.validated > 1 ? 's' : ''}</Text>
+                  <Text style={st.meSub}>
+                    {me.missingForWinners === 0 ? 'Tu es dans la zone des gagnants !' : `Plus que ${me.missingForWinners} pour entrer dans la zone des gagnants`}
+                  </Text>
+                </View>
+                <TouchableOpacity style={st.findBtn} onPress={findMe} accessibilityRole="button"><Text style={st.findBtnText}>Me trouver</Text></TouchableOpacity>
+              </View>
+              <View style={st.progressTrack}>
+                <LinearGradient colors={['#52D726', Colors.primaryGreen]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[st.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
+              </View>
+            </>
+          ) : (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={st.meTitle}>Participe au tournoi</Text>
+                <Text style={st.meSub}>Obtiens ton code de parrainage pour commencer.</Text>
+              </View>
+              <TouchableOpacity style={st.findBtn} onPress={async () => { if (await obtainReferralCode()) void refresh(); }}>
+                <Text style={st.findBtnText}>Obtenir mon code</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+        <TouchableOpacity style={st.inviteBtn} onPress={() => void invite()} activeOpacity={0.85} accessibilityRole="button">
+          <UserPlus color="#050505" size={18} />
+          <Text style={st.inviteText}>Inviter des amis</Text>
+        </TouchableOpacity>
+      </LinearGradient>}
+
+      <ReferralHelpSheet
+        visible={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        depositsRequired={round.rules.depositsRequired}
+        minAmount={round.rules.minAmount}
+        winnersCount={round.winnersCount}
+      />
+    </View>
+  );
+}
+
+const st = StyleSheet.create({
+  container: { flex: 1, backgroundColor: Colors.darkBg },
+  glow: { position: 'absolute', left: 0, right: 0, top: 0, height: 420 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingBottom: 6 },
+  iconBtn: { width: 44, height: 44, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(17,17,17,0.8)', alignItems: 'center', justifyContent: 'center' },
+  kicker: { color: '#B4FF7F', fontSize: 12, fontWeight: '700', letterSpacing: 1.2 },
+  title: { color: Colors.white, fontSize: 18, fontWeight: '900' },
+
+  clockRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 8, paddingHorizontal: 16, flexWrap: 'wrap' },
+  clockLabel: { color: '#A0A0A0', fontSize: 12 },
+  clockCell: { flexDirection: 'row', alignItems: 'baseline', gap: 2, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.06)' },
+  clockValue: { color: Colors.white, fontSize: 15, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  clockUnit: { color: '#8A8A8A', fontSize: 10 },
+  live: { flexDirection: 'row', alignItems: 'center', gap: 5, height: 24, paddingHorizontal: 8, borderRadius: 12, backgroundColor: 'rgba(125,255,42,0.14)', marginLeft: 4 },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.primaryGreen },
+  liveText: { color: Colors.primaryGreen, fontSize: 11, fontWeight: '800' },
+
+  podium: { flexDirection: 'row', justifyContent: 'center', alignItems: 'flex-end', gap: 10, paddingHorizontal: 16, marginTop: 18 },
+  halo: { position: 'absolute', borderWidth: 3, borderColor: '#FFD54A', shadowColor: '#FFD54A', shadowOpacity: 0.8, shadowRadius: 18, shadowOffset: { width: 0, height: 0 } },
+  emptySpot: { borderWidth: 2, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', backgroundColor: '#141414' },
+  podiumName: { color: Colors.white, fontSize: 12, fontWeight: '800', textAlign: 'center', lineHeight: 15, minHeight: 30 },
+  step: { width: '100%', borderTopLeftRadius: 14, borderTopRightRadius: 14, borderBottomLeftRadius: 4, borderBottomRightRadius: 4, borderWidth: 1, alignItems: 'center', paddingTop: 8, overflow: 'hidden' },
+  shine: { position: 'absolute', top: -20, bottom: -20, width: 28, backgroundColor: 'rgba(255,255,255,0.12)' },
+  stepCount: { fontSize: 24, fontWeight: '900' },
+  stepLabel: { color: '#BDBDBD', fontSize: 10 },
+  prizeChip: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.45)', maxWidth: '92%' },
+  prizeThumb: { width: 16, height: 16, borderRadius: 4 },
+  prizeChipText: { color: Colors.white, fontSize: 10, fontWeight: '800', flexShrink: 1 },
+
+  feed: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 20, marginTop: 14, height: 38, paddingHorizontal: 12, borderRadius: 12, backgroundColor: '#0F0F0F', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', overflow: 'hidden' },
+  feedText: { flex: 1, color: '#DADADA', fontSize: 12 },
+  resultsLink: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 20, marginTop: 10, paddingHorizontal: 12, minHeight: 44, borderRadius: 12, backgroundColor: 'rgba(255,213,74,0.07)', borderWidth: 1, borderColor: 'rgba(255,213,74,0.25)' },
+  resultsLinkText: { flex: 1, color: Colors.white, fontSize: 13, fontWeight: '700' },
+
+  row: { position: 'absolute', left: 0, right: 0, height: ROW_H - 4, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, borderRadius: 12, backgroundColor: '#0E0E0E', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
+  rowWinner: { backgroundColor: 'rgba(125,255,42,0.07)', borderColor: 'rgba(125,255,42,0.25)' },
+  rowMe: { borderColor: Colors.primaryGreen, borderWidth: 1.5 },
+  rowRank: { width: 24, color: '#BDBDBD', fontSize: 13, fontWeight: '900', textAlign: 'center' },
+  rowName: { color: Colors.white, fontSize: 14, fontWeight: '700' },
+  rowTag: { color: Colors.primaryGreen, fontSize: 10, fontWeight: '800' },
+  rowCount: { minWidth: 26, textAlign: 'right', color: Colors.white, fontSize: 16, fontWeight: '900' },
+  zoneLine: { position: 'absolute', left: 0, right: 0, height: 0, borderTopWidth: 1, borderStyle: 'dashed', borderColor: 'rgba(125,255,42,0.45)' },
+  zoneText: { position: 'absolute', right: 8, top: -8, paddingHorizontal: 6, backgroundColor: Colors.darkBg, color: Colors.primaryGreen, fontSize: 9, fontWeight: '800', letterSpacing: 0.6 },
+  noneYet: { color: Colors.textSecondary, fontSize: 13, textAlign: 'center', marginTop: 24, marginHorizontal: 32, lineHeight: 19 },
+
+  bottom: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingTop: 26, paddingHorizontal: 20, gap: 10 },
+  meCard: { padding: 12, borderRadius: 16, backgroundColor: '#12240A', borderWidth: 1.5, borderColor: Colors.primaryGreen, gap: 9 },
+  meRank: { minWidth: 36, height: 36, paddingHorizontal: 4, borderRadius: 18, backgroundColor: Colors.primaryGreen, alignItems: 'center', justifyContent: 'center' },
+  meRankText: { color: '#050505', fontSize: 13, fontWeight: '900' },
+  meTitle: { color: Colors.white, fontSize: 14, fontWeight: '800' },
+  meSub: { color: '#B4FF7F', fontSize: 12 },
+  findBtn: { minHeight: 36, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(125,255,42,0.4)', alignItems: 'center', justifyContent: 'center' },
+  findBtnText: { color: Colors.primaryGreen, fontSize: 11, fontWeight: '800' },
+  progressTrack: { height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.08)', overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 3 },
+  inviteBtn: { height: 52, borderRadius: 14, backgroundColor: Colors.primaryGreen, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  inviteText: { color: '#050505', fontSize: 15, fontWeight: '900' },
+
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 12 },
+  emptyTitle: { color: Colors.white, fontSize: 20, fontWeight: '900', textAlign: 'center' },
+  emptyText: { color: Colors.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  primaryBtn: { height: 50, alignSelf: 'stretch', borderRadius: 14, backgroundColor: Colors.primaryGreen, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  primaryBtnText: { color: '#050505', fontWeight: '900', fontSize: 15 },
+  secondaryBtn: { height: 46, alignSelf: 'stretch', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  secondaryBtnText: { color: Colors.white, fontWeight: '700' },
+});

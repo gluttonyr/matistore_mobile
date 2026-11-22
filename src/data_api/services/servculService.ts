@@ -13,11 +13,12 @@ export const servculService = {
   findPlayer: async (
     userId: number | string,
     signal?: AbortSignal,
+    bookmaker?: string,
   ): Promise<ServculPlayer | null> => {
     try {
       const response = await api.get<BackendApiResponse<ServculPlayer | null>>(
         `/servcul/users/${encodeURIComponent(String(userId))}`,
-        { signal },
+        { signal, params: bookmaker ? { bookmaker } : undefined },
       );
       return response.data;
     } catch (error) {

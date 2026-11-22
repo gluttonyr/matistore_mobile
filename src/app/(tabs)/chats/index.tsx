@@ -19,6 +19,8 @@
 
 
 import Badge from '@/components/ui/Badge';
+import { FadeIn } from '@/components/ui/FadeIn';
+import { PressableScale } from '@/components/ui/PressableScale';
 import { ConnectionErrorState } from '@/components/ui/ConnectionErrorState';
 import { Colors } from '@/constants/colors';
 import { Discussion, DiscussionType } from '@/data_api/models/discussion.types';
@@ -33,6 +35,7 @@ import {
   Search
 } from 'lucide-react-native';
 import React, { useCallback, useRef, useState } from 'react';
+import { Snowfall } from '@/components/christmas/Christmas';
 import {
   ActivityIndicator,
   FlatList,
@@ -46,27 +49,27 @@ import {
 // ✅ Clés alignées sur DiscussionType enum
 const typeConfig: Record<string, { icon: React.ReactNode; color: string; bg: string }> = {
   [DiscussionType.SUPPORT]: {
-    icon: <HeadphonesIcon color="#fff" size={20} />,
-    color: '#4FC3F7',
-    bg: '#1565C0',
+    icon: <HeadphonesIcon color="#A78BFA" size={21} />,
+    color: '#A78BFA',
+    bg: 'rgba(167,139,250,0.14)',
   },
   [DiscussionType.DEPOT_RETRAIT]: {
-    icon: <ArrowLeftRight color="#fff" size={20} />,
+    icon: <ArrowLeftRight color={Colors.primaryGreen} size={21} />,
     color: Colors.primaryGreen,
-    bg: '#1B5E20',
+    bg: 'rgba(125,255,42,0.12)',
   },
   [DiscussionType.FORUM]: {
-    icon: <MessageCircle color="#fff" size={20} />,
-    color: '#CE93D8',
-    bg: '#4A148C',
+    icon: <MessageCircle color="#FFC94D" size={21} />,
+    color: '#FFC94D',
+    bg: 'rgba(255,201,77,0.14)',
   },
 };
 
 // Fallback si le type n'est pas reconnu
 const defaultConfig = {
-  icon: <MessageCircle color="#fff" size={20} />,
-  color: '#CE93D8',
-  bg: '#4A148C',
+  icon: <MessageCircle color="#F5F5F5" size={21} />,
+  color: '#F5F5F5',
+  bg: 'rgba(255,255,255,0.07)',
 };
 
 // Formate la date ISO en heure lisible
@@ -142,6 +145,7 @@ export default function ChatsScreen() {
 
   return (
     <View style={styles.container}>
+      <Snowfall count={10} />
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Messages</Text>
@@ -171,19 +175,20 @@ export default function ChatsScreen() {
           data={filtered}
           keyExtractor={(item) => item.trackingId}
           contentContainerStyle={styles.listContent}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
           ListEmptyComponent={() => (
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>Aucune conversation trouvée</Text>
             </View>
           )}
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             const config = typeConfig[item.type] ?? defaultConfig;
+            const main = item.type === DiscussionType.DEPOT_RETRAIT;
             return (
-              <TouchableOpacity
-                style={styles.convItem}
+              <FadeIn index={index}>
+              <PressableScale
+                style={[styles.convItem, main && styles.convItemMain]}
                 onPress={() => navigateToChat(item)}
-                activeOpacity={0.75}
+                accessibilityLabel={item.titre}
               >
                 <View style={[styles.avatarContainer, { backgroundColor: config.bg }]}>
                   {config.icon}
@@ -201,7 +206,8 @@ export default function ChatsScreen() {
                     <Badge count={0} />
                   </View>
                 </View>
-              </TouchableOpacity>
+              </PressableScale>
+              </FadeIn>
             );
           }}
         />
@@ -217,18 +223,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 60,
+    paddingTop: 58,
     paddingBottom: 16,
   },
-  headerTitle: { color: Colors.white, fontSize: 24, fontWeight: '900', letterSpacing: 0.5 },
+  headerTitle: { color: Colors.white, fontSize: 28, fontWeight: '900', letterSpacing: -0.3 },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.cardBg,
-    borderRadius: 12,
+    backgroundColor: '#0E0E0E',
+    borderRadius: 16,
     marginHorizontal: 20,
-    marginBottom: 16,
-    paddingHorizontal: 14,
+    marginBottom: 14,
+    paddingHorizontal: 16,
+    height: 50,
     gap: 10,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -236,29 +243,29 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     color: Colors.white,
-    fontSize: 14,
-    paddingVertical: 12,
+    fontSize: 15,
   },
   loaderContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyContainer: { flex: 1, alignItems: 'center', paddingTop: 60 },
   emptyText: { color: Colors.textSecondary, fontSize: 14 },
-  listContent: { paddingBottom: 20 },
-  separator: { height: 1, backgroundColor: Colors.border, marginLeft: 80 },
+  listContent: { paddingBottom: 20, paddingHorizontal: 14, gap: 4 },
   convItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    gap: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 20,
+    gap: 12,
   },
+  convItemMain: { backgroundColor: '#0E0E0E', borderWidth: 1, borderColor: 'rgba(125,255,42,0.22)' },
   avatarContainer: {
-    width: 52, height: 52, borderRadius: 26,
+    width: 52, height: 52, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center',
     position: 'relative',
   },
   convContent: { flex: 1 },
   convHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  convName: { color: Colors.white, fontSize: 15, fontWeight: '700' },
+  convName: { color: Colors.white, fontSize: 15, fontWeight: '800' },
   convTime: { color: Colors.textSecondary, fontSize: 12 },
   convFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   convLastMsg: { flex: 1, color: Colors.textSecondary, fontSize: 13, marginRight: 8 },

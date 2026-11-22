@@ -33,7 +33,7 @@ function parseStructuredLines(content: string): StructuredLine[] | null {
   if (lines.length < 2) return null;
 
   const hasStructuredHeader = lines[0].includes('📥') || lines[0].includes('📤');
-  const copyableField = /^(?:transaction|type|opérateur|montant|numéro(?: de téléphone)?|téléphone|compte 1xbet|code(?: de retrait| 1xbet)?|référence(?: confirmée| déclarée par le client)?|reference|date de demande|date de traitement)\s*:/i;
+  const copyableField = /^(?:transaction|type|opérateur|montant|numéro(?: de téléphone)?|téléphone|compte (?:1xbet|melbet)|code(?: de retrait| 1xbet| melbet)?|référence(?: confirmée| déclarée par le client)?|reference|date de demande|date de traitement)\s*:/i;
   const hasTransactionFields = lines.some((line) => copyableField.test(line.trim()));
   if (!hasStructuredHeader && !hasTransactionFields) return null;
 
@@ -220,9 +220,9 @@ export function ChatMessage({
             <Text style={[st.msgTime, isMe && st.msgTimeMe]}>{time}</Text>
             {isMe &&
               (item.lu ? (
-                <CheckCheck color={Colors.primaryGreen} size={12} />
+                <CheckCheck color={isMe ? '#050505' : Colors.primaryGreen} size={13} />
               ) : (
-                <Check color={Colors.textSecondary} size={12} />
+                <Check color={isMe ? 'rgba(5,5,5,0.55)' : Colors.textSecondary} size={13} />
               ))}
           </View>
         </View>
@@ -280,9 +280,9 @@ export function ChatMessage({
             <Text style={[st.msgTime, isMe && st.msgTimeMe]}>{time}</Text>
             {isMe &&
               (item.lu ? (
-                <CheckCheck color={Colors.primaryGreen} size={12} />
+                <CheckCheck color={isMe ? '#050505' : Colors.primaryGreen} size={13} />
               ) : (
-                <Check color={Colors.textSecondary} size={12} />
+                <Check color={isMe ? 'rgba(5,5,5,0.55)' : Colors.textSecondary} size={13} />
               ))}
           </View>
         </View>

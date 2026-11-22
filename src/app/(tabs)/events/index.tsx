@@ -1,3 +1,5 @@
+import { FadeIn } from '@/components/ui/FadeIn';
+import { PressableScale } from '@/components/ui/PressableScale';
 import { Colors } from '@/constants/colors';
 import { Categorie } from '@/data_api/models/categorie.types';
 import { Evenement } from '@/data_api/models/evenement.types';
@@ -164,18 +166,44 @@ export default function EventsScreen() {
               </Text>
             </View>
           }
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             const expired = isEventExpired(item.dateFin);
+            const start = new Date(item.dateDebut);
+            const open = () => router.push({ pathname: '/user_events/[id]', params: { id: item.trackingId } });
+
+            // Phone: the first event is a big card, the next ones are compact rows.
+            if (!wide && index > 0) {
+              return (
+                <FadeIn index={index}>
+                  <PressableScale style={[styles.row, expired && styles.cardExpired]} onPress={open} accessibilityLabel={item.titre}>
+                    <EventCoverImage coverImage={item.coverImage} style={[styles.rowImage, expired && styles.cardImageExpired]} />
+                    <View style={styles.rowCopy}>
+                      <Text style={[styles.rowDate, expired && { color: '#ff4d4d' }]}>
+                        {start.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }).replace('.', '').toUpperCase()}
+                        {' · '}
+                        {start.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                      <Text style={styles.rowTitle} numberOfLines={2}>{item.titre}</Text>
+                      <Text style={styles.metaText} numberOfLines={1}>{item.lieu ?? 'Lieu non précisé'}</Text>
+                    </View>
+                    <ChevronRight color={Colors.textSecondary} size={18} />
+                  </PressableScale>
+                </FadeIn>
+              );
+            }
+
             return (
-              <TouchableOpacity
-                style={[styles.card, wide && styles.cardGrid, expired && styles.cardExpired]}
-                onPress={() => router.push({ pathname: '/user_events/[id]', params: { id: item.trackingId } })}
-                activeOpacity={0.85}
+              <FadeIn index={index} style={wide ? styles.cardGrid : undefined}>
+              <PressableScale
+                style={[styles.card, expired && styles.cardExpired]}
+                onPress={open}
+                accessibilityLabel={item.titre}
               >
                 <EventCoverImage coverImage={item.coverImage} style={[styles.cardImage, expired && styles.cardImageExpired]} />
                 <LinearGradient colors={['transparent', 'rgba(5,5,5,0.7)']} style={styles.cardImageGrad} />
-                <View style={styles.catBadge}>
-                  <Text style={styles.catText}>{categoryLabel(item.categorieId)}</Text>
+                <View style={styles.dateBox}>
+                  <Text style={styles.dateDay}>{start.getDate()}</Text>
+                  <Text style={styles.dateMonth}>{start.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '').toUpperCase()}</Text>
                 </View>
                 {expired && (
                   <View style={styles.expiredBadge}>
@@ -184,6 +212,9 @@ export default function EventsScreen() {
                   </View>
                 )}
                 <View style={styles.cardContent}>
+                  <View style={styles.catBadge}>
+                    <Text style={styles.catText}>{categoryLabel(item.categorieId)}</Text>
+                  </View>
                   <Text style={styles.cardTitle}>{item.titre}</Text>
                   <Text style={styles.cardDesc} numberOfLines={2}>{item.description}</Text>
                   <View style={styles.cardMeta}>
@@ -206,7 +237,8 @@ export default function EventsScreen() {
                     <ChevronRight color={Colors.primaryGreen} size={16} />
                   </TouchableOpacity>
                 </View>
-              </TouchableOpacity>
+              </PressableScale>
+              </FadeIn>
             );
           }}
         />
@@ -220,7 +252,7 @@ const styles = StyleSheet.create({
   header: {
     paddingTop: 60, paddingBottom: 16, paddingHorizontal: 20,
   },
-  headerTitle: { color: Colors.white, fontSize: 24, fontWeight: '900', letterSpacing: 0.5 },
+  headerTitle: { color: Colors.white, fontSize: 28, fontWeight: '900', letterSpacing: -0.3 },
   headerSub: { color: Colors.textSecondary, fontSize: 13, marginTop: 2 },
   filtersWrapper: {
   paddingVertical: 10,
@@ -236,10 +268,10 @@ const styles = StyleSheet.create({
     borderRadius: 20, borderWidth: 1, borderColor: Colors.border,
     backgroundColor: Colors.cardBg,
   },
-  filterActive: { backgroundColor: 'rgba(125,255,42,0.15)', borderColor: 'rgba(125,255,42,0.4)' },
+  filterActive: { backgroundColor: '#F5F5F5', borderColor: '#F5F5F5' },
   filterExpiredActive: { backgroundColor: 'rgba(255,77,77,0.12)', borderColor: 'rgba(255,77,77,0.4)' },
   filterText: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600', flexShrink: 0 },
-  filterTextActive: { color: Colors.primaryGreen, fontWeight: '800' },
+  filterTextActive: { color: '#050505', fontWeight: '800' },
   filterTextExpiredActive: { color: '#ff4d4d', fontWeight: '800' },
   filterCount: {
     minWidth: 20, height: 20, borderRadius: 10,
@@ -247,12 +279,12 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     paddingHorizontal: 5,
   },
-  filterCountActive: { backgroundColor: 'rgba(125,255,42,0.2)' },
+  filterCountActive: { backgroundColor: '#050505' },
   filterCountExpiredActive: { backgroundColor: 'rgba(255,77,77,0.2)' },
   filterCountText: { color: Colors.textSecondary, fontSize: 11, fontWeight: '800' },
   filterCountTextActive: { color: Colors.white },
   loaderContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  list: { padding: 20, gap: 20, paddingBottom: 32 },
+  list: { padding: 20, gap: 12, paddingBottom: 32 },
   empty: { alignItems: 'center', paddingTop: 60, gap: 16 },
   emptyText: { color: Colors.textSecondary, fontSize: 15, textAlign: 'center', paddingHorizontal: 20 },
   emptyBtn: {
@@ -262,22 +294,37 @@ const styles = StyleSheet.create({
   },
   emptyBtnText: { color: Colors.primaryGreen, fontWeight: '700' },
   card: {
-    borderRadius: 20, overflow: 'hidden',
-    backgroundColor: Colors.cardBg, borderWidth: 1, borderColor: Colors.border,
+    borderRadius: 24, overflow: 'hidden',
+    backgroundColor: '#0E0E0E', borderWidth: 1, borderColor: Colors.border,
+    marginBottom: 8,
   },
+  dateBox: {
+    position: 'absolute', top: 14, left: 14, width: 56, height: 60, borderRadius: 16,
+    backgroundColor: 'rgba(5,5,5,0.82)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  dateDay: { color: Colors.white, fontSize: 22, fontWeight: '900', lineHeight: 24 },
+  dateMonth: { color: Colors.primaryGreen, fontSize: 10, fontWeight: '800', letterSpacing: 1 },
+  row: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: 20,
+    backgroundColor: '#0E0E0E', borderWidth: 1, borderColor: Colors.border,
+  },
+  rowImage: { width: 76, height: 76, borderRadius: 16, backgroundColor: Colors.cardBg },
+  rowCopy: { flex: 1, gap: 4, minWidth: 0 },
+  rowDate: { color: Colors.primaryGreen, fontSize: 11, fontWeight: '800', letterSpacing: 0.8 },
+  rowTitle: { color: Colors.white, fontSize: 15, fontWeight: '800' },
   gridRow: { gap: 20 },
   cardGrid: { width: '31.5%' },
   cardExpired: { borderColor: 'rgba(255,77,77,0.3)', opacity: 0.8 },
-  cardImage: { width: '100%', height: 180, resizeMode: 'cover' },
+  cardImage: { width: '100%', height: 200, resizeMode: 'cover' },
   cardImageExpired: { opacity: 0.45 },
-  cardImageGrad: { position: 'absolute', top: 100, left: 0, right: 0, height: 80 },
+  cardImageGrad: { position: 'absolute', top: 120, left: 0, right: 0, height: 80 },
   catBadge: {
-    position: 'absolute', top: 14, left: 14,
-    backgroundColor: 'rgba(125,255,42,0.2)',
-    borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4,
-    borderWidth: 1, borderColor: 'rgba(125,255,42,0.3)',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(167,139,250,0.14)',
+    borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4,
   },
-  catText: { color: Colors.primaryGreen, fontSize: 11, fontWeight: '700' },
+  catText: { color: '#C4B5FD', fontSize: 11, fontWeight: '800' },
   expiredBadge: {
     position: 'absolute', top: 14, right: 14,
     flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -287,7 +334,7 @@ const styles = StyleSheet.create({
   },
   expiredBadgeText: { color: '#ff4d4d', fontSize: 11, fontWeight: '700' },
   cardContent: { padding: 16, gap: 8 },
-  cardTitle: { color: Colors.white, fontSize: 17, fontWeight: '800', letterSpacing: 0.2 },
+  cardTitle: { color: Colors.white, fontSize: 19, fontWeight: '900', letterSpacing: 0.1 },
   cardDesc: { color: Colors.textSecondary, fontSize: 13, lineHeight: 20 },
   cardMeta: { flexDirection: 'row', gap: 16, marginTop: 4 },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },

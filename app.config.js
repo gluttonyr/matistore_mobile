@@ -105,6 +105,12 @@ export default ({ config }) => ({
         }
       ],
       [
+        "./plugins/withOptionalHardwareFeatures",
+        {
+          features: ["android.hardware.telephony", "android.hardware.screen.portrait"]
+        }
+      ],
+      [
         "expo-media-library",
         {
           granularPermissions: [],

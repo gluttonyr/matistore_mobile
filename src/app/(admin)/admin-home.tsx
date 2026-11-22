@@ -5,6 +5,10 @@ import { AdminDashboardStats } from '@/data_api/models/stats.types';
 import { banniereService } from '@/data_api/services/banniereService';
 import { discussionService } from '@/data_api/services/discussionService';
 import { statsService } from '@/data_api/services/statsService';
+import { transactionService } from '@/data_api/services/transactionService';
+import { referralService } from '@/data_api/services/referralService';
+import { PressableScale } from '@/components/ui/PressableScale';
+import { FadeIn } from '@/components/ui/FadeIn';
 import { useFileUrl } from '@/hooks/useFileUrl';
 import { usePresenceCount } from '@/hooks/usepresenceCount';
 import { goToTab } from '@/utils/tabNavigation';
@@ -23,6 +27,8 @@ import {
   Settings2,
   Shield,
   ShieldCheck,
+  Ticket,
+  Trophy,
   Users,
   Zap,
 } from 'lucide-react-native';
@@ -113,6 +119,18 @@ export default function AdminDashboard() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(-20)).current;
   const onlineCount = usePresenceCount();
+  // Figures shown on the big Transactions button and the "Gérer" tiles.
+  const [pendingCount, setPendingCount] = useState<number | null>(null);
+  const [toReward, setToReward] = useState<number | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      transactionService.getAllForAdmin({ page: 1, limit: 1, status: 'EN_ATTENTE_ADMIN' })
+        .then((p) => setPendingCount(p.total)).catch(() => {});
+      referralService.getRounds()
+        .then((rounds) => setToReward(rounds.reduce((n, r) => n + r.winners.filter((w) => !w.rewarded).length, 0)))
+        .catch(() => {});
+    }, [])
+  );
 
   useEffect(() => {
     banniereService
@@ -201,15 +219,22 @@ export default function AdminDashboard() {
       >
 
         <View style={[styles.section, { marginTop: 4 }]}>
-          <TouchableOpacity
-            style={styles.configureBtn}
+          <PressableScale
+            style={styles.txHero}
             onPress={() => router.push('/admin_transactions' as any)}
-            activeOpacity={0.8}
+            accessibilityLabel="Transactions et capture automatique"
           >
-            <ShieldCheck color="#A78BFA" size={15} />
-            <Text style={styles.configureBtnText}>Transactions et capture automatique</Text>
-            <ChevronRight color="#A78BFA" size={15} />
-          </TouchableOpacity>
+            <View style={styles.txHeroIcon}><ShieldCheck color="#050505" size={21} /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.txHeroTitle}>Transactions</Text>
+              <Text style={styles.txHeroSub}>Suivi et capture automatique</Text>
+            </View>
+            {pendingCount ? (
+              <View style={styles.txHeroChip}><Text style={styles.txHeroChipText}>{pendingCount} à valider</Text></View>
+            ) : (
+              <ChevronRight color="#050505" size={20} />
+            )}
+          </PressableScale>
         </View>
 
         {/* ── Users Stats ── */}
@@ -376,20 +401,23 @@ export default function AdminDashboard() {
         </Animated.View>
 
         <View style={styles.section}>
-          <TouchableOpacity
-            style={styles.pushNotificationCard}
-            onPress={() => router.push('/admin_notifications' as any)}
-            activeOpacity={0.8}
-          >
-            <View style={styles.pushNotificationIcon}>
-              <Bell color="#A78BFA" size={19} />
-            </View>
-            <View style={styles.pushNotificationCopy}>
-              <Text style={styles.pushNotificationTitle}>Notifications push</Text>
-              <Text style={styles.pushNotificationSubtitle}>Envoyer un message à tous les utilisateurs</Text>
-            </View>
-            <ChevronRight color="#A78BFA" size={18} />
-          </TouchableOpacity>
+          <Text style={[styles.sectionTitle, { marginBottom: 12 }]}>Gérer</Text>
+          <View style={styles.manageGrid}>
+            {[
+              { key: 'coupons', title: 'Coupons du jour', sub: 'Publier, gagné / perdu', Icon: Ticket, color: Colors.primaryGreen, bg: 'rgba(125,255,42,0.12)', border: 'rgba(125,255,42,0.25)', to: '/admin_coupons' },
+              { key: 'referral', title: 'Tournoi', sub: toReward ? `${toReward} gagnant${toReward > 1 ? 's' : ''} à récompenser` : 'Tours et réglages', Icon: Trophy, color: '#FFC94D', bg: 'rgba(255,201,77,0.14)', border: 'rgba(255,201,77,0.28)', to: '/admin_referral' },
+              { key: 'push', title: 'Notification push', sub: 'Message à tous', Icon: Bell, color: '#A78BFA', bg: 'rgba(167,139,250,0.14)', border: 'rgba(167,139,250,0.28)', to: '/admin_notifications' },
+              { key: 'banners', title: 'Bannières', sub: `${banners.length} sur l’accueil`, Icon: ImageIcon, color: Colors.white, bg: 'rgba(255,255,255,0.07)', border: Colors.border, to: '/config/slide-editor' },
+            ].map((t, i) => (
+              <FadeIn key={t.key} index={i} style={styles.manageCell}>
+                <PressableScale style={[styles.manageTile, { borderColor: t.border }]} onPress={() => router.push(t.to as any)} accessibilityLabel={t.title}>
+                  <View style={[styles.manageIcon, { backgroundColor: t.bg }]}><t.Icon color={t.color} size={19} /></View>
+                  <Text style={styles.manageTitle}>{t.title}</Text>
+                  <Text style={styles.manageSub} numberOfLines={1}>{t.sub}</Text>
+                </PressableScale>
+              </FadeIn>
+            ))}
+          </View>
         </View>
 
         {/* ── Activité récente ── */}
@@ -755,4 +783,20 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.06)',
   },
   quickNavLabel: { color: Colors.white, fontSize: 11, fontWeight: '700' },
+  txHero: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 22,
+    backgroundColor: Colors.primaryGreen,
+    shadowColor: Colors.primaryGreen, shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 8,
+  },
+  txHeroIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(5,5,5,0.12)', alignItems: 'center', justifyContent: 'center' },
+  txHeroTitle: { color: '#050505', fontSize: 16, fontWeight: '900' },
+  txHeroSub: { color: 'rgba(5,5,5,0.62)', fontSize: 12, fontWeight: '600' },
+  txHeroChip: { paddingHorizontal: 10, height: 28, borderRadius: 14, backgroundColor: '#050505', justifyContent: 'center' },
+  txHeroChipText: { color: '#FFC266', fontSize: 12, fontWeight: '800' },
+  manageGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },
+  manageCell: { width: '50%', padding: 5 },
+  manageTile: { padding: 14, borderRadius: 20, backgroundColor: '#0E0E0E', borderWidth: 1, gap: 8, minHeight: 118 },
+  manageIcon: { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  manageTitle: { color: Colors.white, fontSize: 14, fontWeight: '800' },
+  manageSub: { color: Colors.textSecondary, fontSize: 11 },
 });

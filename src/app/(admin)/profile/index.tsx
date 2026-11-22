@@ -1,3 +1,4 @@
+import { UserAvatar } from '@/components/UserAvatar';
 import { Colors } from '@/constants/colors';
 import { User as UserModel, UserRole } from '@/data_api/models/user.types';
 import { userService } from '@/data_api/services/userService';
@@ -19,18 +20,25 @@ import {
 import Toast from 'react-native-toast-message';
 
 // ─── Avatar initiales ────────────────────────────────────────────────────────
-function AvatarInitials({ prenom, nom }: { prenom: string; nom: string }) {
+// Profile photo when one was uploaded, otherwise the initials.
+function AvatarInitials({ prenom, nom, image }: { prenom: string; nom: string; image?: string | null }) {
   const initials = `${prenom?.[0] ?? ''}${nom?.[0] ?? ''}`.toUpperCase();
   return (
     <View style={styles.avatarRing}>
-      <LinearGradient
-        colors={[Colors.primaryGreen, Colors.secondaryGreen ?? '#4caf50']}
-        style={styles.avatarGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      >
-        <Text style={styles.avatarText}>{initials}</Text>
-      </LinearGradient>
+      <UserAvatar
+        image={image}
+        size={62}
+        fallback={(
+          <LinearGradient
+            colors={[Colors.primaryGreen, Colors.secondaryGreen ?? '#4caf50']}
+            style={styles.avatarGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <Text style={styles.avatarText}>{initials}</Text>
+          </LinearGradient>
+        )}
+      />
     </View>
   );
 }
@@ -208,7 +216,7 @@ export default function ProfilePage() {
 
         {/* ── Avatar + identité ── */}
         <View style={styles.heroCard}>
-          <AvatarInitials prenom={prenom} nom={nom} />
+          <AvatarInitials prenom={prenom} nom={nom} image={user.image} />
 
           <View style={styles.heroInfo}>
             <Text style={styles.heroName}>{prenom} {nom}</Text>

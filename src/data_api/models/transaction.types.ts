@@ -30,6 +30,8 @@ export interface Transaction {
   statut: TransactionStatus;
   montant: number;
   operateur?: string | null;
+  /** Bookmaker code (1XBET, MELBET…); absent from servers older than the bookmaker choice. */
+  bookmaker?: string | null;
   numeroTelephone?: string | null;
   compteDestinataire?: string | null;
   codeRetrait?: string | null;
@@ -76,6 +78,7 @@ export interface CreateTransactionDto {
   type: TransactionType;
   montant?: number;
   operateur?: string;
+  bookmaker?: string;
   numeroTelephone?: string;
   compteDestinataire?: string;
   codeRetrait?: string;

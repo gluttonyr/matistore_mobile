@@ -10,7 +10,15 @@ type PlayerValidationState = {
   error: string | null;
 };
 
-export function useServculPlayerValidation(accountId: string): PlayerValidationState {
+/**
+ * Checks the account ID with the chosen bookmaker. With no bookmaker chosen yet, nothing is checked.
+ * `bookmakerName` is only used in the "not found" message.
+ */
+export function useServculPlayerValidation(
+  accountId: string,
+  bookmaker?: string | null,
+  bookmakerName?: string | null,
+): PlayerValidationState {
   const [state, setState] = useState<PlayerValidationState>({
     player: null,
     checking: false,
@@ -25,7 +33,7 @@ export function useServculPlayerValidation(accountId: string): PlayerValidationS
     const controller = new AbortController();
 
     setState({ player: null, checking: false, error: null });
-    if (!userId) return () => controller.abort();
+    if (!userId || !bookmaker) return () => controller.abort();
     if (!/^\d+$/.test(userId)) {
       setState({ player: null, checking: false, error: 'L’ID doit contenir uniquement des chiffres.' });
       return () => controller.abort();
@@ -34,14 +42,14 @@ export function useServculPlayerValidation(accountId: string): PlayerValidationS
     timeout = setTimeout(() => {
       setState({ player: null, checking: true, error: null });
       if (__DEV__) console.info('[Servcul player lookup] request', { userId });
-      void servculService.findPlayer(userId, controller.signal)
+      void servculService.findPlayer(userId, controller.signal, bookmaker)
         .then((player) => {
           if (controller.signal.aborted || latestIdRef.current !== userId) return;
           if (__DEV__) console.info('[Servcul player lookup] response', { userId, player });
           setState({
             player,
             checking: false,
-            error: player ? null : 'Cet ID 1XBET est introuvable.',
+            error: player ? null : `Cet ID ${bookmakerName || bookmaker} est introuvable.`,
           });
         })
         .catch((error: unknown) => {
@@ -75,7 +83,7 @@ export function useServculPlayerValidation(accountId: string): PlayerValidationS
       if (timeout) clearTimeout(timeout);
       controller.abort();
     };
-  }, [accountId]);
+  }, [accountId, bookmaker, bookmakerName]);
 
   return state;
 }
