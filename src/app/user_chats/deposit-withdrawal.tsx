@@ -224,6 +224,13 @@ function BookmakerImage({ imageUrl, style }: { imageUrl?: string | null; style?:
   return <Image source={{ uri }} style={style} resizeMode="cover" />;
 }
 
+/** Long USSD codes get a smaller font so they stay inside their card. */
+function ussdCodeSize(code: string) {
+  if (code.length > 26) return { fontSize: 18 };
+  if (code.length > 20) return { fontSize: 22 };
+  return null;
+}
+
 export default function DepositWithdrawalScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { initialMode } = useLocalSearchParams<{ initialMode?: string }>();
@@ -1866,13 +1873,13 @@ export default function DepositWithdrawalScreen() {
                   </Text>
                   {/* iOS: the code is not displayed, only copied (the client dials it in the Phone app). */}
                   {Platform.OS !== 'ios' && (
-                  <Text style={[st.codeValue, { color: Colors.primaryGreen }]}>
+                  <Text style={[st.codeValue, ussdCodeSize(buildUssdCode(currentOperator, depositNumero, rawAmount)), { color: Colors.primaryGreen }]}>
                     {buildUssdCode(currentOperator, depositNumero, rawAmount)}
                   </Text>
                   )}
                   <Text style={st.codeInstructions}>
                     {Platform.OS === 'web'
-                      ? 'Copiez ce code, puis composez-le sur votre téléphone avec le numéro indiqué. Nous vérifierons la réception de votre paiement.'
+                      ? 'Sur votre téléphone, touchez « Effectuer le paiement » : l’app Téléphone s’ouvre avec le code, il ne reste qu’à appeler. Sur un ordinateur, copiez le code et composez-le sur le téléphone du numéro indiqué. Nous vérifierons la réception de votre paiement.'
                       : Platform.OS === 'ios'
                       ? 'Touchez « Copier le code de paiement », ouvrez l’app Téléphone, collez le code puis appelez. Nous vérifierons la réception de votre paiement.'
                       : 'Nous lancerons le code et vérifierons la réception de votre paiement. Vous pouvez aussi le copier pour le composer sur un autre téléphone.'}
@@ -1880,6 +1887,17 @@ export default function DepositWithdrawalScreen() {
                 </View>
                 {/* A browser can't dial USSD: on web the client copies the code and dials it on the phone.
                     iOS keeps only the copy button. */}
+                {Platform.OS === 'web' && (
+                <GreenButton
+                  title={depositPaymentAlreadyReceived ? 'Paiement déjà reçu' : 'Effectuer le paiement →'}
+                  onPress={() => {
+                    // The deposit already exists on the web at this step: only open the phone app.
+                    window.location.href = `tel:${encodeURIComponent(buildUssdCode(currentOperator, depositNumero, rawAmount))}`;
+                  }}
+                  disabled={creatingTransaction || depositPaymentAlreadyReceived}
+                  style={st.pageBtn}
+                />
+                )}
                 {Platform.OS === 'android' && (
                 <GreenButton
                   title={depositPaymentAlreadyReceived
@@ -2786,7 +2804,11 @@ const st = StyleSheet.create({
     marginBottom: 16,
   },
   codeLabel: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
-  codeValue: { fontSize: 28, fontWeight: '900', letterSpacing: 1 },
+  codeValue: {
+    fontSize: 28, fontWeight: '900', letterSpacing: 1, textAlign: 'center', alignSelf: 'stretch',
+    // A browser cannot break a code without spaces: let it wrap anywhere instead of overflowing.
+    ...(Platform.OS === 'web' ? ({ wordBreak: 'break-all' } as object) : null),
+  },
   codeInstructions: {
     color: Colors.textSecondary,
     fontSize: 13,
