@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import apiClient from './axios';
 import { logError } from './logger';
 
@@ -17,8 +18,13 @@ const api = {
       // (application/json) pour laisser le browser définir multipart/form-data
       // avec le bon boundary automatiquement.
       const isFormData = typeof FormData !== 'undefined' && data instanceof FormData;
+      // On the web the browser must write "multipart/form-data; boundary=…" itself: drop any
+      // Content-Type a service set (a value without the boundary makes the upload unreadable).
+      // Phones keep the header the services set, as before.
       const resolvedConfig = isFormData
-        ? { headers: { 'Content-Type': undefined }, ...config }
+        ? Platform.OS === 'web'
+          ? { ...config, headers: { ...((config as { headers?: object }).headers ?? {}), 'Content-Type': undefined } }
+          : { headers: { 'Content-Type': undefined }, ...config }
         : config;
 
       const response = await apiClient.request<T>({

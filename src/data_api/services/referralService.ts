@@ -8,6 +8,7 @@ import type {
   ReferralStats,
   ReferralTournament,
 } from '@/data_api/models/referral.types';
+import { appendFile } from '../lib/uploadFile';
 
 async function run<T>(label: string, fn: () => Promise<{ data: T }>): Promise<T> {
   try {
@@ -38,9 +39,9 @@ export const referralService = {
   getStats: () => run<ReferralStats>('Get referral stats failed', () => api.get('/admin/referral/stats')),
 
   /** Prize picture → filename in the uploads folder "referral". */
-  uploadPrizeImage: (file: { uri: string; name: string; type: string }) => run<string>('Upload prize image failed', () => {
+  uploadPrizeImage: (file: { uri: string; name: string; type: string }) => run<string>('Upload prize image failed', async () => {
     const formData = new FormData();
-    formData.append('file', { uri: file.uri, name: file.name, type: file.type } as any);
+    await appendFile(formData, 'file', { uri: file.uri, name: file.name, type: file.type });
     formData.append('prefix', 'prize');
     formData.append('folder', 'referral');
     return api.post('/uploads', formData, { headers: { 'Content-Type': 'multipart/form-data' } } as any);

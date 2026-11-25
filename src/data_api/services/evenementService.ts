@@ -1,6 +1,7 @@
 import api from '@/data_api/lib/api';
 import { logError } from '@/data_api/lib/logger';
 import { CreateEvenementDto, Evenement, UpdateEvenementDto } from '@/data_api/models/evenement.types';
+import { appendFile } from '../lib/uploadFile';
 
 type ApiResponse<T> = { data: T; message?: string; status?: number };
 
@@ -29,11 +30,11 @@ export const evenementService = {
     try {
       const formData = new FormData();
       if (file) {
-        formData.append('file', {
+        await appendFile(formData, 'file', {
           uri: file.uri,
           name: file.name,
           type: file.type,
-        } as any);
+        });
       }
       formData.append('data', JSON.stringify(data));
       formData.append('prefix', 'event_');
@@ -57,11 +58,11 @@ export const evenementService = {
     try {
       const formData = new FormData();
       if (file) {
-        formData.append('file', {
+        await appendFile(formData, 'file', {
           uri: file.uri,
           name: file.name,
           type: file.type,
-        } as any);
+        });
       }
       formData.append('data', JSON.stringify(data));
       formData.append('prefix', 'event_');

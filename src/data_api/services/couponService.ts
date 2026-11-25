@@ -2,6 +2,7 @@ import api from '@/data_api/lib/api';
 import { logError } from '@/data_api/lib/logger';
 import type { Coupon, CouponPage, CouponStatus } from '@/data_api/models/coupon.types';
 import Constants from 'expo-constants';
+import { appendFile } from '../lib/uploadFile';
 
 async function run<T>(label: string, fn: () => Promise<{ data: T }>): Promise<T> {
   try {
@@ -28,7 +29,7 @@ export const couponService = {
   /** Screenshot → its public URL (uploads folder "coupons"). */
   uploadImage: async (file: { uri: string; name: string; type: string }): Promise<string> => {
     const formData = new FormData();
-    formData.append('file', { uri: file.uri, name: file.name, type: file.type } as any);
+    await appendFile(formData, 'file', { uri: file.uri, name: file.name, type: file.type });
     formData.append('prefix', 'coupon');
     formData.append('folder', 'coupons');
     const filename = await run<string>('Upload coupon image failed', () =>

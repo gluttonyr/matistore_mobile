@@ -19,6 +19,10 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import Toast from 'react-native-toast-message';
 import { toastConfig } from '@/components/ui/toastConfig';
+import { installWebAlert } from '@/utils/webAlert';
+
+// Web: Alert.alert uses the browser's dialogs (React Native's does nothing there).
+installWebAlert();
 
 // Web only: dark navigation theme, so no light background shows around centered screens.
 const webTheme = { ...DarkTheme, colors: { ...DarkTheme.colors, background: Colors.darkBg, card: Colors.darkBg } };

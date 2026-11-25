@@ -6,7 +6,8 @@ import { resolveFileUrl } from '@/hooks/useFileUrl';
 import { PLAY_STORE_URL } from '@/components/referral/referralUi';
 import { Copy, Maximize2, Share2, Ticket } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Clipboard, Image, Platform, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Image, Platform, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { copyText } from '@/utils/copyText';
 import Toast from 'react-native-toast-message';
 
 export const MONO = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' });
@@ -38,7 +39,7 @@ export const formatTime = (iso: string) =>
   new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
 export function copyCouponCode(bookmaker: string, code: string) {
-  Clipboard.setString(code);
+  void copyText(code);
   Toast.show({ type: 'success', text1: `Code ${bookmaker} copié`, text2: code });
 }
 
@@ -61,7 +62,7 @@ export async function shareCoupon(coupon: Coupon) {
     }
     await Share.share(Platform.OS === 'ios' ? { message, url: coupon.imageUrl } : { message });
   } catch {
-    Clipboard.setString(message);
+    void copyText(message);
     Toast.show({ type: 'info', text1: 'Coupon copié', text2: 'Collez-le dans l’application de votre choix.' });
   }
 }

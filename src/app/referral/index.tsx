@@ -176,12 +176,31 @@ export default function ReferralTournamentScreen() {
     prevCounts.current = next;
   }, [feedAnim, ranking, round]);
 
+  // The code is loaded with the page, so "Inviter" shares at once (browsers block a share
+  // that starts after a network wait).
+  const [myCode, setMyCode] = useState<string | null>(null);
+  useEffect(() => {
+    referralService.getMe().then((me) => setMyCode(me.code ?? null)).catch(() => {});
+  }, [data?.round?.me.hasCode]);
+
   const invite = async () => {
+    if (myCode) {
+      await shareReferralCode(myCode);
+      return;
+    }
     try {
       const me = await referralService.getMe();
-      const code = me.code ?? await obtainReferralCode();
-      if (code) await shareReferralCode(code);
-      if (!me.code && code) void refresh();
+      if (me.code) {
+        setMyCode(me.code);
+        await shareReferralCode(me.code);
+        return;
+      }
+      const code = await obtainReferralCode();
+      if (!code) return;
+      setMyCode(code);
+      void refresh();
+      // Just created: a second tap shares it (the browser would block a share started now).
+      Toast.show({ type: 'success', text1: `Votre code : ${code}`, text2: 'Touchez « Inviter des amis » pour le partager.' });
     } catch {
       Toast.show({ type: 'error', text1: 'Erreur', text2: 'Réessayez dans un instant.' });
     }

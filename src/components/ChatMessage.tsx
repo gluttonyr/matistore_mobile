@@ -3,7 +3,8 @@ import { MessageType } from '@/data_api/models/message.types';
 import { resolveFileUrl } from '@/hooks/useFileUrl';
 import { Check, CheckCheck, Copy, Pin, PinOff, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
-import { Clipboard, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { copyText } from '@/utils/copyText';
 import Toast from 'react-native-toast-message';
 
 import { AudioPlayer } from './Audioplayer';
@@ -70,7 +71,7 @@ export function ChatMessage({
     : new Date(item.createdAt).toLocaleTimeString('fr', { hour: '2-digit', minute: '2-digit' });
 
   const handleCopy = (value: string) => {
-    Clipboard.setString(value);
+    void copyText(value);
     Toast.show({ type: 'success', text1: 'Copié !', visibilityTime: 1200 });
   };
 

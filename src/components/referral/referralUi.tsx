@@ -3,7 +3,8 @@ import { Colors } from '@/constants/colors';
 import { referralService } from '@/data_api/services/referralService';
 import { getApiErrorMessage } from '@/data_api/lib/logger';
 import { X } from 'lucide-react-native';
-import { Clipboard, Linking, Modal, Platform, Pressable, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Linking, Modal, Platform, Pressable, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { copyText } from '@/utils/copyText';
 import Toast from 'react-native-toast-message';
 
 export const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.urbain_diligence.matistore_mobile';
@@ -32,21 +33,37 @@ export const inviteMessage = (code: string) =>
   + `Saisis mon code de parrainage ${code} à l'inscription. Télécharge l'appli : ${PLAY_STORE_URL}`;
 
 export async function copyReferralCode(code: string) {
-  Clipboard.setString(code);
-  Toast.show({ type: 'success', text1: 'Code copié', text2: code });
+  const ok = await copyText(code);
+  Toast.show(ok
+    ? { type: 'success', text1: 'Code copié', text2: code }
+    : { type: 'info', text1: 'Votre code de parrainage', text2: `${code} — copiez-le à la main.` });
 }
 
-/** WhatsApp when installed, else the system share sheet. */
+/**
+ * Phone: WhatsApp when installed, else the system share sheet.
+ * Web: the browser's share sheet (phones), else WhatsApp Web in a new tab, else copy.
+ * On the web, call it straight from the click (no network wait before): browsers block
+ * share sheets and new tabs that do not come directly from a click.
+ */
 export async function shareReferralCode(code: string) {
   const message = inviteMessage(code);
+  if (Platform.OS === 'web') {
+    try {
+      if (typeof navigator.share === 'function') {
+        await navigator.share({ text: message });
+        return;
+      }
+    } catch (error) {
+      if ((error as { name?: string })?.name === 'AbortError') return; // closed by the user
+    }
+    const tab = window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener');
+    if (!tab) await copyReferralCode(code);
+    return;
+  }
   const whatsapp = `whatsapp://send?text=${encodeURIComponent(message)}`;
   try {
-    if (Platform.OS !== 'web' && await Linking.canOpenURL(whatsapp)) {
+    if (await Linking.canOpenURL(whatsapp)) {
       await Linking.openURL(whatsapp);
-      return;
-    }
-    if (Platform.OS === 'web') {
-      window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
       return;
     }
     await Share.share({ message });

@@ -3,6 +3,7 @@ import { logError } from '@/data_api/lib/logger';
 import type { AppNotification, AppNotificationPage } from '@/data_api/models/appNotification.types';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import { appendFile } from '../lib/uploadFile';
 
 type ApiResponse<T> = { data: T; message?: string; status?: number };
 
@@ -47,7 +48,7 @@ export const notificationService = {
   uploadImage: async (file: { uri: string; name: string; type: string }): Promise<string> => {
     try {
       const formData = new FormData();
-      formData.append('file', { uri: file.uri, name: file.name, type: file.type } as any);
+      await appendFile(formData, 'file', { uri: file.uri, name: file.name, type: file.type });
       formData.append('prefix', 'broadcast');
       formData.append('folder', 'notifications');
       const response = await api.post<ApiResponse<string>>('/uploads', formData, {

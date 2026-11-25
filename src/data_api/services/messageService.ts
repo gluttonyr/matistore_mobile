@@ -2,6 +2,7 @@
 import api from '@/data_api/lib/api';
 import { logError } from '@/data_api/lib/logger';
 import { Message, MessageType } from '@/data_api/models/message.types';
+import { appendFile } from '../lib/uploadFile';
 
 type ApiResponse<T> = { data: T; message?: string; status?: number };
 
@@ -20,11 +21,11 @@ export const messageService = {
   uploadFile: async (file: { uri: string; name: string; type: string }): Promise<string> => {
     try {
       const formData = new FormData();
-      formData.append('file', {
+      await appendFile(formData, 'file', {
         uri: file.uri,
         name: file.name,
         type: file.type,
-      } as any);
+      });
       formData.append('prefix', 'message_');
       formData.append('folder', 'messages');
 

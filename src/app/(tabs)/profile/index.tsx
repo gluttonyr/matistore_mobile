@@ -29,6 +29,7 @@ import {
   View,
 } from 'react-native';
 import Toast from 'react-native-toast-message';
+import { appendFile } from '@/data_api/lib/uploadFile';
 
 // ─── Avatar initiales ────────────────────────────────────────────────────────
 function AvatarInitials({
@@ -231,11 +232,11 @@ export default function ProfilePage() {
       setLoading(true);
       const formData = new FormData();
       formData.append('data', JSON.stringify({}));
-      formData.append('file', {
+      await appendFile(formData, 'file', {
         uri: image.uri,
         name: image.fileName ?? image.uri.split('/').pop() ?? `profile_${Date.now()}.jpg`,
         type: image.mimeType ?? 'image/jpeg',
-      } as any);
+      });
       const updatedUser = await userService.update(user.trackingId, formData);
       queryClient.setQueryData(['user'], updatedUser);
       await authStorage.setUser(updatedUser);
@@ -277,11 +278,11 @@ export default function ProfilePage() {
         const formData = new FormData();
         formData.append('data', JSON.stringify(profileData));
         const name = pickedImage.fileName ?? pickedImage.uri.split('/').pop() ?? `profile_${Date.now()}.jpg`;
-        formData.append('file', {
+        await appendFile(formData, 'file', {
           uri: pickedImage.uri,
           name,
           type: pickedImage.mimeType ?? 'image/jpeg',
-        } as any);
+        });
         updateData = formData;
       }
       const updatedUser = await userService.update(user.trackingId, updateData);
